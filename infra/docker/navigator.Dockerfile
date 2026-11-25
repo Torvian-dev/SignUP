@@ -1,0 +1,9 @@
+FROM python:3.12-slim
+WORKDIR /app
+COPY apps/navigator/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY apps/navigator/main.py .
+RUN useradd -u 10001 -m nav
+USER nav
+EXPOSE 8088
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8088"]
