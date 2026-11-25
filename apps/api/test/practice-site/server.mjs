@@ -154,6 +154,25 @@ const SHADOW = page("Create your account", `
   customElements.define("signup-form", SignupForm);
 </script>`);
 
+// --- Email code (OTP) entry step ---
+const VERIFY_CODE = page("Verify your email", `
+  <h1>Verify your email</h1>
+  <p>We've emailed a 6-digit code to your address. Enter it below to activate your account.</p>
+  <form id="f">
+    <div class="row"><label for="code">Verification code</label>
+      <input type="text" id="code" name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required></div>
+    <p class="err" id="err"></p>
+    <button type="submit">Verify</button>
+  </form>
+<script>
+  document.getElementById("f").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const code = new FormData(e.target).get("code");
+    const r = await fetch("/api/verify-code", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ code }) });
+    if (r.ok) location.href = "/thanks"; else document.getElementById("err").textContent = (await r.json()).error;
+  });
+</script>`);
+
 // --- Existing-account sign-in flow ---
 const LOGIN = page("Sign in", `
   <h1>Sign in to your account</h1>
@@ -181,10 +200,18 @@ createServer(async (req, res) => {
   if (url.pathname === "/embedded-form") return html(EMBEDDED_FORM);
   if (url.pathname === "/shadow") return html(SHADOW);
   if (url.pathname === "/login") return html(LOGIN);
+  if (url.pathname === "/verify-code") return html(VERIFY_CODE);
   if (url.pathname === "/thanks") return html(THANKS);
   if (url.pathname === "/submissions") {
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify(submissions.map(({ pw, pw2, ...rest }) => ({ ...rest, pw: pw ? `<${pw.length} chars>` : null })), null, 2));
+  }
+  if (url.pathname === "/api/verify-code" && req.method === "POST") {
+    let body = ""; for await (const c of req) body += c;
+    const { code } = JSON.parse(body);
+    if (!/^[0-9A-Za-z]{4,8}$/.test(code || "")) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: "Invalid code" })); }
+    submissions.push({ source: "verify-code", code, receivedAt: new Date().toISOString() });
+    res.writeHead(200, { "content-type": "application/json" }); return res.end("{}");
   }
   if (url.pathname === "/api/login" && req.method === "POST") {
     let body = ""; for await (const c of req) body += c;

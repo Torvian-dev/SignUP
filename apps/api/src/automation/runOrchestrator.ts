@@ -19,7 +19,7 @@ import { logger } from "../lib/logger.js";
 import { redis } from "../lib/redis.js";
 import { mapPage, type Decision } from "../services/ai/mappingEngine.js";
 import { solveCaptcha } from "../services/captcha/captchaRouter.js";
-import { waitForVerificationLink } from "../services/email/verificationInbox.js";
+import { waitForVerificationCode, waitForVerificationLink } from "../services/email/verificationInbox.js";
 import { recordOutcome } from "../services/learning/learningService.js";
 import { checkRunAllowed } from "../services/policy/policyGuard.js";
 import { getDecryptedProfile } from "../services/profiles/profileService.js";
@@ -31,6 +31,8 @@ import { emit, setStatus } from "./events.js";
 import { fillFields, type FillResult } from "./formFiller.js";
 import { startLiveView } from "./liveView.js";
 import { clickAndSettle, dismissCookieBanner, followSignupLink, pickPrimaryButton } from "./navigator.js";
+import { resolveFrame } from "./frames.js";
+import { humanType } from "./humanInput.js";
 import { audit as writeAudit } from "../middleware/audit.js";
 import { analysePage, type PageAnalysis, type RawField } from "./pageAnalyzer.js";
 
@@ -79,6 +81,7 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
   const generatedPassword = generateSitePassword();
   values["generated.password"] = generatedPassword;
   let createdAccount = false;
+  const runStart = new Date(Date.now() - 5 * 60_000); // search email from shortly before the run began
 
   let session: BrowserSession | null = null;
   try {
@@ -140,9 +143,15 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
       // CAPTCHA
       const captcha = await handleCaptcha(orgId, runId, domain, session, profile.proxy ?? undefined, { autoSubmit: run.auto_submit });
 
+      // Email verification CODE (OTP): if the page asks for a one-time code, pull it from the inbox and type it.
+      const otpResults = await fillEmailCode(orgId, runId, session, values["personal.email"], domain, fields, runStart);
+      results.push(...otpResults);
+      const otpFilled = new Set(otpResults.filter((r) => r.status === "filled").map((r) => r.fieldId));
+
       // Decide: auto-advance or stop for review
       const primary = pickPrimaryButton(analysis, mapped.submitLocatorHint);
       const requiredOk = fields.filter((f) => f.required && f.visible).every((f) => {
+        if (otpFilled.has(f.id)) return true;
         const r = results.find((x) => x.fieldId === f.id);
         const d = mapped.decisions.find((x) => x.fieldId === f.id);
         return r?.status === "filled" && r.valid && (d?.confidence ?? 0) >= autoAccept;
@@ -166,6 +175,7 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
         // accepts it, when the mapping is deterministic (heuristic), human-confirmed before (memory),
         // or a high-confidence AI mapping. Terms are ticked at submission, so they're exempt here.
         for (const f of fields.filter((x) => x.required && x.visible)) {
+          if (otpFilled.has(f.id)) continue; // code pulled from email
           const r = results.find((x) => x.fieldId === f.id);
           const d = mapped.decisions.find((x) => x.fieldId === f.id);
           if (d?.profilePath === "consent.terms") continue;
@@ -237,6 +247,30 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
     }
     return null;
   }
+}
+
+async function fillEmailCode(orgId: string, runId: string, s: BrowserSession, email: string | undefined, domain: string,
+                            fields: (RawField & { id: string })[], since: Date): Promise<FillResult[]> {
+  const otpFields = fields.filter((f) => f.otp && f.visible && !f.honeypot);
+  if (otpFields.length === 0 || !email) return [];
+  await emit(orgId, runId, "verification", "This page asks for an email code — checking the inbox");
+  const code = await waitForVerificationCode(orgId, email, domain, since, 120_000);
+  if (!code) {
+    await emit(orgId, runId, "verification", "No verification code found in email within 2 minutes — enter it on the review screen", undefined, "warn");
+    return [];
+  }
+  const out: FillResult[] = [];
+  for (const f of otpFields) {
+    try {
+      const root = resolveFrame(s.page, f.framePath);
+      await humanType(s.page, root.locator(f.locator).first(), code);
+      out.push({ fieldId: f.id, status: "filled", valid: true, displayValue: code });
+    } catch (err) {
+      out.push({ fieldId: f.id, status: "error", valid: false, validationMessage: (err as Error).message.slice(0, 160) });
+    }
+  }
+  await emit(orgId, runId, "verification", `Entered the code from email (${code})`);
+  return out;
 }
 
 async function maybeVerifyEmail(orgId: string, runId: string, page: Page, domain: string, email?: string) {

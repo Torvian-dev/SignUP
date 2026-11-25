@@ -22,6 +22,7 @@ export interface RawField {
   options?: { value: string; label: string }[];
   formIndex: number;
   honeypot: boolean;
+  otp: boolean;
 }
 
 export interface PageAnalysis {
@@ -116,6 +117,14 @@ function extractInFrame() {
       const name = el.getAttribute("name") ?? undefined;
       // Honeypots: invisible but not type=hidden, often with tempting names.
       const honeypot = !visible && kind !== "hidden" && (el.getAttribute("tabindex") === "-1" || /website|url|honey|hp_|fax/i.test(name ?? ""));
+      // One-time code / OTP field: a short text/number input tagged or labelled as a verification code.
+      const ac = (el.getAttribute("autocomplete") ?? "").toLowerCase();
+      const ctx = `${name ?? ""} ${el.id} ${el.getAttribute("placeholder") ?? ""} ${el.getAttribute("aria-label") ?? ""} ${labelFor(el as HTMLElement) ?? ""} ${nearby(el as HTMLElement) ?? ""}`.toLowerCase();
+      const maxlen = Number(el.getAttribute("maxlength") ?? "0");
+      const otp = ["text", "tel", "number"].includes(kind) &&
+        (ac === "one-time-code" ||
+         /\b(one[-\s]?time|verification|confirmation|security|activation|email)\s*(code|pin)\b|\b(otp|2fa|mfa)\b|enter (the|your) code|6[-\s]?digit|code we (sent|emailed)/.test(ctx) ||
+         (/\bcode\b/.test(ctx) && maxlen > 0 && maxlen <= 8));
       const options =
         el.tagName === "SELECT"
           ? Array.from((el as HTMLSelectElement).options).slice(0, 300).map((o) => ({ value: o.value, label: o.text.trim() }))
@@ -132,7 +141,7 @@ function extractInFrame() {
         nearbyText: nearby(el), section: text(el.closest("fieldset")?.querySelector("legend")) || undefined,
         required: (el as HTMLInputElement).required || el.getAttribute("aria-required") === "true",
         visible, inShadow, inDialog: !!el.closest("dialog, [role=dialog], [aria-modal=true]"),
-        options, formIndex: forms.findIndex((f) => f.contains(el)), honeypot,
+        options, formIndex: forms.findIndex((f) => f.contains(el)), honeypot, otp,
       });
     });
     root.querySelectorAll<HTMLElement>("button, input[type=submit], [role=button], a.button, a.btn").forEach((b) => {

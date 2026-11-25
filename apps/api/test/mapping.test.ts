@@ -48,3 +48,23 @@ describe("verifyTotp", () => {
     expect(verifyTotp(secret, "abc", 59_000)).toBe(false);
   });
 });
+
+import { extractCode } from "../src/services/email/emailParse.js";
+describe("extractCode", () => {
+  const cases: [string, string | null][] = [
+    ["Your verification code is 482913. It expires in 10 minutes.", "482913"],
+    ["<p>Enter the code <b>593017</b> to confirm your email.</p>", "593017"],
+    ["Your one-time password: AB12CD", "AB12CD"],
+    ["Confirmation code: 8831", "8831"],
+    ["Your OTP is 246810 for Acme Portal", "246810"],
+    ["Use 123456 to verify. Do not share this 6-digit code.", "123456"],
+    ["Welcome to Acme — no code here, just a greeting from 2024.", "2024"], // falls back to a 4-digit block
+    ["Thanks for signing up! Visit your dashboard.", null],
+  ];
+  it("pulls the code from typical verification emails", () => {
+    for (const [body, want] of cases) expect(extractCode(body)).toBe(want);
+  });
+  it("prefers a code next to a keyword over an unrelated number", () => {
+    expect(extractCode("Order 100043 confirmed. Your security code is 771290.")).toBe("771290");
+  });
+});
