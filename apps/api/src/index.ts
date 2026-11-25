@@ -9,6 +9,7 @@ import { env } from "./config/env.js";
 import { db } from "./lib/db.js";
 import { logger } from "./lib/logger.js";
 import { redis } from "./lib/redis.js";
+import { ensureBootstrapAdmin } from "./services/auth/adminSetup.js";
 import { requireAuth } from "./middleware/auth.js";
 import { errorHandler } from "./middleware/http.js";
 import { analyticsRouter } from "./routes/analytics.js";
@@ -47,6 +48,7 @@ app.use("/v1/providers", providersRouter);
 app.use("/v1/analytics", analyticsRouter);
 app.use(errorHandler);
 
+await ensureBootstrapAdmin().catch((e) => logger.error({ e }, "bootstrap failed"));
 const server = app.listen(env.PORT, () => logger.info({ port: env.PORT }, "api listening"));
 const shutdown = () => server.close(async () => { await db.end(); redis.disconnect(); process.exit(0); });
 process.on("SIGTERM", shutdown);

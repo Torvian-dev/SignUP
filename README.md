@@ -82,7 +82,17 @@ Automated version:
 **Automated version** of the single-run test (drives the real UI and saves screenshots):
 `E2E_PASSWORD=... node apps/api/test/e2e/practice-run.cjs` (with Playwright installed).
 
-## Quick start (local)
+## Try it (one command)
+
+With Docker installed:
+
+```bash
+./try-it.sh
+```
+
+It builds everything, creates your admin login, and bundles a practice website so you can test with no API keys. Full walkthrough and how to report issues: [TRY-IT.md](TRY-IT.md).
+
+## Quick start (local, without Docker)
 
 ```bash
 ./scripts/dev-secrets.sh > .env          # dev keys; add AUTH_GOOGLE_* / AUTH_MICROSOFT_ENTRA_ID_* for OAuth

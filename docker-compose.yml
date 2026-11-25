@@ -1,6 +1,9 @@
-# Local development stack:  docker compose up --build
-# First time:  ./scripts/dev-secrets.sh > .env && docker compose up -d postgres && docker compose run --rm migrate
-# Then: http://localhost:3000  (API on :4000)
+# Try it in one command:   ./try-it.sh
+# Or manually:             ./scripts/dev-secrets.sh > .env  &&  docker compose run --rm migrate  &&  docker compose up --build
+# Then open http://localhost:3000 and sign in with the admin shown by the script.
+#
+# A fictional "practice" site is included at http://practice:5055 so you can test with no API keys.
+# The `navigator` sidecar (open-ended navigation fallback) is optional: add it with  --profile full
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -11,9 +14,9 @@ services:
     ports: ["5432:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
-    healthcheck: { test: ["CMD-SHELL", "pg_isready -U formagent"], interval: 5s, retries: 10 }
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U formagent"], interval: 5s, retries: 15 }
 
-  # One-shot: applies db/migrations (tracked in schema_migrations) + seed.  docker compose run --rm migrate
+  # One-shot: applies db/migrations (tracked in schema_migrations) + seed.  Run once before `up`.
   migrate:
     image: postgres:16
     profiles: ["tools"]
@@ -26,7 +29,6 @@ services:
   redis:
     image: redis:7.4-alpine
     command: ["redis-server", "--appendonly", "yes"]
-    ports: ["6379:6379"]
 
   api:
     build: { context: ., dockerfile: infra/docker/api.Dockerfile }
@@ -36,6 +38,8 @@ services:
       REDIS_URL: redis://redis:6379
       PUBLIC_WEB_ORIGIN: http://localhost:3000
       NAVIGATOR_URL: http://navigator:8088
+      # Lets the agent reach the bundled practice site (a private host). Leave off in production.
+      ALLOW_PRIVATE_TARGETS: "true"
     ports: ["4000:4000"]
     depends_on: { postgres: { condition: service_healthy }, redis: { condition: service_started } }
 
@@ -46,13 +50,25 @@ services:
       DATABASE_URL: postgres://formagent:formagent@postgres:5432/formagent
       REDIS_URL: redis://redis:6379
       NAVIGATOR_URL: http://navigator:8088
+      ALLOW_PRIVATE_TARGETS: "true"
       WORKER_CONCURRENCY: "2"
     shm_size: "1gb"   # Chromium needs more than Docker's 64MB default
     depends_on: [api]
 
+  # Bundled practice site for trying the agent without any real website or API keys.
+  practice:
+    image: node:22-bookworm-slim
+    working_dir: /site
+    command: ["node", "server.mjs"]
+    environment: { PORT: "5055" }
+    volumes: ["./apps/api/test/practice-site:/site:ro"]
+    ports: ["5055:5055"]
+
+  # Optional: open-ended navigation fallback (Browser Use, Python). Heavier build; enable with --profile full.
   navigator:
     build: { context: ., dockerfile: infra/docker/navigator.Dockerfile }
     env_file: .env
+    profiles: ["full"]
 
   web:
     build: { context: ., dockerfile: infra/docker/web.Dockerfile }

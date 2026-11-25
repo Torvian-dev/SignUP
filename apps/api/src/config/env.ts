@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+/** Make a PEM robust to how .env files and Docker env_file pass multi-line values. */
+function normalizePem(v: string): string {
+  return v.trim().replace(/^["']|["']$/g, "").replace(/\\r/g, "").replace(/\\n/g, "\n");
+}
+
 const Env = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().default(4000),
@@ -9,9 +14,9 @@ const Env = z.object({
   REDIS_URL: z.string().default("redis://localhost:6379"),
 
   // JWT: API access tokens are signed with ES256. Auth.js (web) exchanges its session for these.
-  // .env files and Docker env_file keep "\n" literally — normalise to real newlines.
-  JWT_PRIVATE_KEY_PEM: z.string().transform((v) => v.replace(/\\n/g, "\n")),
-  JWT_PUBLIC_KEY_PEM: z.string().transform((v) => v.replace(/\\n/g, "\n")),
+  // .env / Docker env_file may keep surrounding quotes and literal "\n" — strip and normalise both.
+  JWT_PRIVATE_KEY_PEM: z.string().transform(normalizePem),
+  JWT_PUBLIC_KEY_PEM: z.string().transform(normalizePem),
   JWT_ISSUER: z.string().default("formagent-api"),
   JWT_AUDIENCE: z.string().default("formagent"),
   ACCESS_TOKEN_TTL_SEC: z.coerce.number().default(900),
@@ -39,6 +44,12 @@ const Env = z.object({
   CHROMIUM_EXECUTABLE_PATH: z.string().optional(),
   // DEVELOPMENT ONLY: allow runs against localhost / private IPs (practice site, E2E tests). Refused in production.
   ALLOW_PRIVATE_TARGETS: z.enum(["true", "false"]).default("false"),
+
+  // First-boot admin bootstrap (Docker). Ignored once any user exists.
+  BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
+  BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
+  BOOTSTRAP_ADMIN_NAME: z.string().optional(),
+  BOOTSTRAP_ADMIN_ORG: z.string().optional(),
 
   WORKER_CONCURRENCY: z.coerce.number().default(2),
   LOG_LEVEL: z.string().default("info"),
