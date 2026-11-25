@@ -5,9 +5,13 @@ cd "$(dirname "$0")"
 
 command -v docker >/dev/null 2>&1 || { echo "Docker is required — install Docker Desktop: https://docs.docker.com/get-docker/"; exit 1; }
 docker compose version >/dev/null 2>&1 || { echo "Docker Compose v2 is required (comes with Docker Desktop)."; exit 1; }
-command -v openssl >/dev/null 2>&1 || { echo "openssl is required to generate local secrets."; exit 1; }
 
-if [ ! -f .env ]; then echo "→ Generating local secrets (.env)…"; ./scripts/dev-secrets.sh > .env; fi
+if [ ! -f .env ]; then
+  echo "→ Generating local secrets (.env)…"
+  if command -v openssl >/dev/null 2>&1; then ./scripts/dev-secrets.sh > .env
+  else docker run --rm -v "$PWD:/w" -w /w alpine sh -c "apk add --no-cache openssl >/dev/null 2>&1 && sh scripts/dev-secrets.sh" > .env
+  fi
+fi
 
 echo "→ Starting database and cache…"
 docker compose up -d postgres redis

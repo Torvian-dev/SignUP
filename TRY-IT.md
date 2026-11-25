@@ -1,60 +1,74 @@
-# Try FormAgent
+# Run FormAgent on your PC
 
-Run the whole thing on your own computer and click through it. A fictional practice website is bundled, so you need **no API keys** to try the core flow.
+Your PC runs everything (the database, the automation engine, the website). You use it through your normal web browser at `http://localhost:3000`. Nothing is public — it only runs on your machine.
 
-## 1. Install Docker
+A fictional practice website is bundled, so you can try the whole flow with **no API keys**.
 
-[Docker Desktop](https://docs.docker.com/get-docker/) (Mac/Windows/Linux). That's the only prerequisite.
+---
 
-## 2. Start it (one command)
+## Step 1 — Install Docker Desktop (one time)
 
-```bash
-./try-it.sh
-```
+Download and install **Docker Desktop**: https://docs.docker.com/get-docker/
+(Windows or Mac — pick your version, install, and open it once so it's running.)
 
-First run builds the images and can take a few minutes. When it finishes it prints your **URL and admin login**, for example:
+Docker is what lets your PC run the whole system from one folder without installing databases or anything else by hand.
 
-```
-Open:     http://localhost:3000
-Sign in:  admin@formagent.local
-Password: <a random password it generated>
-```
+## Step 2 — Download the app
 
-## 3. Try a run
+Get the project folder onto your PC, either way:
 
-1. **Profiles → New profile** (or **Import CSV**) — add your details and, optionally, a proxy as `ip:port:user:pass`.
+- **Easiest:** on the GitHub page, click the green **Code** button → **Download ZIP**, then unzip it. (Make sure you're on the `claude/ai-form-automation-saas-m493nl` branch, or whichever branch I tell you.)
+- **Or with git:** `git clone <repo-url>` then `git checkout claude/ai-form-automation-saas-m493nl`
+
+You now have a folder called `SignUP` (or similar) with all the files.
+
+## Step 3 — Start it (double-click)
+
+Open that folder and double-click:
+
+- **Windows:** `start-formagent.bat`
+- **Mac:** `Start FormAgent.command`
+
+A window opens and shows progress. The **first run builds everything and can take a few minutes** (later starts take seconds). When it's ready it:
+
+- opens `http://localhost:3000` in your browser, and
+- prints your **admin email and password** in that window.
+
+Sign in with those. (Change the password after first login under your account.)
+
+> If double-click is blocked on Mac the first time: right-click the file → **Open** → **Open**. On Windows, if SmartScreen warns: **More info → Run anyway**.
+
+## Step 4 — Use it
+
+1. **Profiles → New profile** (or **Import CSV**) — add your details; a proxy can be pasted as `ip:port:user:pass`.
 2. **New automation** — URL: `http://practice:5055/register?captcha=off` → pick the profile → **Start agent**.
-3. Watch the activity stream fill the form, then **review and Approve & submit**.
-4. See what the site received at `http://localhost:5055/submissions`.
+3. Watch it fill the form, then **review → Approve & submit**. See what the site received at `http://localhost:5055/submissions`.
 
-Other things to try: a **multi-step form** (`http://practice:5055/`), a **form in an iframe** (`/iframe-host`), a **shadow-DOM form** (`/shadow`), a **CAPTCHA** (`/register`, solved in the live view), a **code step** (`/verify-code`), and a **batch** (Profiles → import a CSV of several people → Batch sign-ups → select all).
+Other things to try: a form in an iframe (`/iframe-host`), a shadow-DOM form (`/shadow`), a CAPTCHA page (`/register`, solved in the live view), an email-code step (`/verify-code`), and a batch (import several people → **Batch sign-ups** → select all).
 
-> Use `http://practice:5055/...` as the URL you enter in the app (the agent reaches the practice site by that name). You can also open `http://localhost:5055` in your own browser to see it.
+## Optional — make it a desktop app
 
-## Useful commands
+In Chrome or Edge, with `http://localhost:3000` open, click the **Install** icon in the address bar (or menu → **Install FormAgent**). You get a FormAgent icon and a clean app window on your PC, instead of a browser tab. It still just talks to the engine running on your PC.
 
-```bash
-docker compose logs -f api worker web    # watch logs (useful when reporting a glitch)
-docker compose down                       # stop, keep data
-docker compose down -v                    # stop and wipe all data
-docker compose up -d --build              # rebuild after pulling changes
-```
+## Stopping and starting again
+
+- **Stop:** double-click `Stop FormAgent.command` (Mac) / `stop-formagent.bat` (Windows). Your data is kept.
+- **Start again:** double-click the Start launcher — it's quick after the first build.
+
+---
 
 ## What works without keys, and what needs them
 
-- **Works now:** profiles, CSV import, running the agent on the practice site, multi-step/iframe/shadow/login forms, the review screen, batches, the dashboard. On a brand-new form the agent fills fields it recognises from standard tags or past corrections; anything it's unsure of is flagged for you to set.
-- **Needs a key you add in Admin → API keys:**
+- **Works now:** profiles, CSV import, running the agent on the practice site, multi-step / iframe / shadow / login forms, review, batches, the dashboard.
+- **Add a key in Admin → API keys for:**
   - **AI** (Claude / OpenAI / Gemini) — smart field-matching on sites it hasn't seen before.
-  - **CAPTCHA** (CapSolver, etc.) — automatic solving. Without it, CAPTCHAs come to you in the live view.
+  - **CAPTCHA** (CapSolver, etc.) — automatic solving (otherwise challenges come to you in the live view).
   - **Email** (IMAP / Microsoft 365) — auto-reading verification links and codes.
 
 ## Reporting a glitch
 
-Tell me, with as much of this as you can:
+Tell me: what you did (page + steps), what you expected vs what happened, a screenshot if visual, and for errors the logs from a terminal in the folder:
 
-1. **What you did** — the page and the steps (e.g. "New automation → practice iframe URL → Start").
-2. **What you expected** vs **what happened**.
-3. A **screenshot** if it's visual.
-4. For an error, the relevant **logs**: `docker compose logs --tail=50 api worker web`.
-
-Small and specific is perfect — "the review screen showed X but the field was Y" is more useful than "it broke."
+```
+docker compose logs --tail=50 api worker web
+```

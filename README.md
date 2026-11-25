@@ -82,15 +82,9 @@ Automated version:
 **Automated version** of the single-run test (drives the real UI and saves screenshots):
 `E2E_PASSWORD=... node apps/api/test/e2e/practice-run.cjs` (with Playwright installed).
 
-## Try it (one command)
+## Run it on your PC
 
-With Docker installed:
-
-```bash
-./try-it.sh
-```
-
-It builds everything, creates your admin login, and bundles a practice website so you can test with no API keys. Full walkthrough and how to report issues: [TRY-IT.md](TRY-IT.md).
+Install Docker Desktop, then double-click **`Start FormAgent.command`** (Mac) or **`start-formagent.bat`** (Windows) — or run `./try-it.sh`. Your PC runs everything; you use it at `http://localhost:3000`. A practice website is bundled so you can try it with no API keys. Step-by-step (download, install, use): **[TRY-IT.md](TRY-IT.md)**.
 
 ## Quick start (local, without Docker)
 
