@@ -2,8 +2,9 @@
  * Fills mapped fields using natural input, then validates each one by reading it back and
  * checking the browser's own constraint validation + any visible error message nearby.
  */
-import type { Frame, Locator, Page } from "playwright";
+import type { Locator, Page } from "playwright";
 import { getDecrypted, BLOB } from "./blobPaths.js";
+import { resolveFrame } from "./frames.js";
 import { humanClick, humanType, pause } from "./humanInput.js";
 import { applyTransform } from "./transforms.js";
 import type { RawField } from "./pageAnalyzer.js";
@@ -30,17 +31,6 @@ export interface FillResult {
   valid: boolean;
   validationMessage?: string;
   displayValue?: string;                    // masked for review screen when sensitive
-}
-
-function frameFor(page: Page, framePath: string): Frame | Page {
-  if (framePath === "main") return page;
-  // Resolve "iframe[...] >> iframe[...]" chains
-  let f: Frame | null = page.mainFrame();
-  for (const sel of framePath.split(" >> ")) {
-    const child: Frame | undefined = f?.childFrames().find((c) => c.url().includes((sel.match(/src\*="([^"]+)"/) ?? [])[1] ?? "\u0000") || c.name() === (sel.match(/name="([^"]+)"/) ?? [])[1]);
-    f = child ?? null;
-  }
-  return f ?? page;
 }
 
 async function validate(loc: Locator): Promise<{ valid: boolean; message?: string }> {
@@ -81,7 +71,7 @@ export async function fillFields(ctx: FillContext, decisions: Decision[]): Promi
       transform = `date:${ph}`;
     }
     const value = applyTransform(raw, transform, { countryCode: ctx.countryCode });
-    const root = frameFor(ctx.page, field.framePath);
+    const root = resolveFrame(ctx.page, field.framePath);
     const loc = root.locator(field.locator).first();
 
     try {

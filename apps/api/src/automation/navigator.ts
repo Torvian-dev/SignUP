@@ -10,6 +10,7 @@
  *    NAVIGATES — it never types profile data and never submits.
  */
 import type { Page } from "playwright";
+import { resolveFrame } from "./frames.js";
 import { env } from "../config/env.js";
 import { humanClick, pause } from "./humanInput.js";
 import type { PageAnalysis } from "./pageAnalyzer.js";
@@ -26,11 +27,11 @@ export function classifyButton(text: string): ButtonRole {
   return "none";
 }
 
-export function pickPrimaryButton(a: PageAnalysis, hint: string | null): { text: string; locator: string; role: ButtonRole } | null {
+export function pickPrimaryButton(a: PageAnalysis, hint: string | null): { text: string; locator: string; role: ButtonRole; framePath: string } | null {
   const candidates = a.buttons.map((b) => ({ ...b, role: classifyButton(b.text) })).filter((b) => b.role !== "none");
   const hinted = hint ? candidates.find((b) => b.text.toLowerCase().includes(hint.toLowerCase())) : undefined;
   const chosen = hinted ?? candidates.find((b) => b.type === "submit") ?? candidates[0];
-  return chosen ? { text: chosen.text, locator: chosen.locator, role: chosen.role } : null;
+  return chosen ? { text: chosen.text, locator: chosen.locator, role: chosen.role, framePath: chosen.framePath } : null;
 }
 
 export async function dismissCookieBanner(page: Page) {
@@ -41,9 +42,10 @@ export async function dismissCookieBanner(page: Page) {
   }
 }
 
-export async function clickAndSettle(page: Page, locator: string) {
+export async function clickAndSettle(page: Page, locator: string, framePath?: string) {
   const before = page.url();
-  await humanClick(page, page.locator(locator).first());
+  const root = resolveFrame(page, framePath);
+  await humanClick(page, root.locator(locator).first());
   await Promise.race([
     page.waitForURL((u) => u.toString() !== before, { timeout: 15_000 }),
     page.waitForLoadState("networkidle", { timeout: 15_000 }),

@@ -152,7 +152,7 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
       if (canAutoAdvance && primary) {
         for (const d of mapped.decisions) if (d.decisionId && d.profilePath) await recordOutcome(orgId, run.created_by, { decisionId: d.decisionId, outcome: "accepted", finalPath: d.profilePath, finalTransform: d.transform });
         await emit(orgId, runId, "navigation", `Auto-advancing: "${primary.text}"`);
-        await clickAndSettle(page, primary.locator);
+        await clickAndSettle(page, primary.locator, primary.framePath);
         await saveCheckpoint(orgId, runId, step + 1, page.url());
         continue;
       }
@@ -181,7 +181,7 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
         await setStatus(orgId, runId, "submitting", { approved_by: run.created_by });
         await writeAudit({ orgId, actorUserId: run.created_by, action: "run.submit", targetType: "run", targetId: runId, metadata: { domain, auto: true, batch: run.batch_id } });
         await emit(orgId, runId, "navigation", `Auto-submitting: "${primary.text}"`);
-        await clickAndSettle(page, primary.locator);
+        await clickAndSettle(page, primary.locator, primary.framePath);
         await withOrg(orgId, (tx) => tx.query("UPDATE automation_runs SET submitted_at = now() WHERE id=$1", [runId]));
         await saveCheckpoint(orgId, runId, step + 1, page.url());
         await maybeVerifyEmail(orgId, runId, page, domain, values["personal.email"]);
@@ -204,7 +204,7 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
       await setStatus(orgId, runId, "submitting", { approved_by: ctrl.userId });
       await audit(orgId, ctrl.userId, runId, domain);
       if (!primary) { await escalateManual(orgId, runId, session, "Could not find the submit button — please click it in the live view"); }
-      else await clickAndSettle(page, primary.locator);
+      else await clickAndSettle(page, primary.locator, primary.framePath);
       await withOrg(orgId, (tx) => tx.query("UPDATE automation_runs SET submitted_at = now() WHERE id=$1", [runId]));
       await saveCheckpoint(orgId, runId, step + 1, page.url());
 

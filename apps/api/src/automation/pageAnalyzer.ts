@@ -38,7 +38,7 @@ export interface PageAnalysis {
     hasModal: boolean;
     signupLinks: string[];               // visible text of links that lead to sign-up
   };
-  buttons: { text: string; locator: string; type: string }[];
+  buttons: { text: string; locator: string; type: string; framePath: string }[];
 }
 
 /** Runs inside the page. Must be self-contained (serialised by Playwright). */
@@ -193,7 +193,7 @@ export async function analysePage(page: Page): Promise<PageAnalysis> {
       const sig = [domain, host, fp, f.formIndex, f.name, f.htmlId, f.label, f.kind].join("|");
       fields.push({ ...f, framePath: fp, fieldKey: createHash("sha256").update(sig).digest("hex").slice(0, 32) });
     }
-    if (fp === "main") buttons.push(...r.buttons);
+    buttons.push(...(r.buttons as { text: string; locator: string; type: string }[]).map((b) => ({ ...b, framePath: fp })));
   }
 
   const pw = fields.filter((f) => f.kind === "password" && f.visible);

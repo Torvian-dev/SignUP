@@ -5,6 +5,9 @@
  *  - a honeypot field, a country <select>, a date with DD/MM/YYYY format,
  *  - a reCAPTCHA-style widget on the last step (test site key, no Google script),
  *  - a confirmation page. Received submissions are listed at /submissions.
+ *  - /iframe-host: the same form embedded in a same-origin <iframe> (/embedded-form),
+ *  - /shadow: a form rendered inside an open shadow root (web component),
+ *  - /login: an existing-account sign-in flow (intent=login).
  *
  *   node test/practice-site/server.mjs   (PORT=5055)
  */
@@ -93,15 +96,102 @@ const REGISTER = (CAPTCHA_ON) => page("Supplier registration", `
 
 const THANKS = page("Registration complete", `<h1>Thank you — your supplier account has been created</h1><p>We've sent a confirmation to your work e-mail.</p>`);
 
+// --- Embedded (iframe) form: a single-step registration living in a same-origin iframe ---
+const EMBEDDED_FORM = page("Register", `
+  <h1>Quick registration</h1>
+  <form id="f">
+    <div class="row"><label for="fn">Full name</label><input type="text" id="fn" name="full_name" autocomplete="name" required></div>
+    <div class="row"><label for="em">Email</label><input type="email" id="em" name="work_mail" autocomplete="email" required></div>
+    <div class="row"><label for="ph">Telephone</label><input type="tel" id="ph" name="mob" required></div>
+    <div class="row"><label for="co">Organisation</label><input type="text" id="co" name="trading_name" required></div>
+    <div class="row check"><input type="checkbox" id="terms" name="terms" required> <label for="terms">I accept the terms</label></div>
+    <p class="err" id="err"></p>
+    <button type="submit">Create account</button>
+  </form>
+<script>
+  document.getElementById("f").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    const r = await fetch("/api/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...fd, source: "iframe" }) });
+    if (r.ok) parent.location.href = "/thanks"; else document.getElementById("err").textContent = (await r.json()).error;
+  });
+</script>`);
+
+const IFRAME_HOST = page("Supplier registration", `
+  <h1>Become a supplier</h1>
+  <p>Complete the form below to register.</p>
+  <iframe src="/embedded-form" title="Registration form" style="width:100%;height:520px;border:1px solid #c5ccd3;border-radius:8px"></iframe>`);
+
+// --- Shadow DOM form: fields live inside an open shadow root ---
+const SHADOW = page("Create your account", `
+  <h1>Create your account</h1>
+  <signup-form></signup-form>
+<script>
+  class SignupForm extends HTMLElement {
+    connectedCallback() {
+      const root = this.attachShadow({ mode: "open" });
+      root.innerHTML = \`
+        <style>.row{margin-bottom:14px}label{display:block;font-size:14px;margin-bottom:4px}
+          input{width:100%;padding:8px;border:1px solid #c5ccd3;border-radius:6px;box-sizing:border-box}
+          button{background:#123c69;color:#fff;border:0;border-radius:6px;padding:10px 18px;cursor:pointer}
+          .err{color:#b00020;font-size:13px}</style>
+        <form id="f">
+          <div class="row"><label for="gn">Given name</label><input type="text" id="gn" name="contact_fn" required></div>
+          <div class="row"><label for="sn">Surname</label><input type="text" id="sn" name="contact_ln" required></div>
+          <div class="row"><label for="em">Email address</label><input type="email" id="em" name="work_mail" required></div>
+          <div class="row"><label for="ph">Mobile</label><input type="tel" id="ph" name="mob" required></div>
+          <p class="err" id="err"></p>
+          <button type="submit">Sign up</button>
+        </form>\`;
+      root.getElementById("f").addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(e.target).entries());
+        const r = await fetch("/api/register", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...fd, terms: "on", source: "shadow" }) });
+        if (r.ok) location.href = "/thanks"; else root.getElementById("err").textContent = (await r.json()).error;
+      });
+    }
+  }
+  customElements.define("signup-form", SignupForm);
+</script>`);
+
+// --- Existing-account sign-in flow ---
+const LOGIN = page("Sign in", `
+  <h1>Sign in to your account</h1>
+  <form id="f">
+    <div class="row"><label for="em">Email</label><input type="email" id="em" name="email" autocomplete="username" required></div>
+    <div class="row"><label for="pw">Password</label><input type="password" id="pw" name="password" autocomplete="current-password" required></div>
+    <p class="err" id="err"></p>
+    <button type="submit">Log in</button>
+  </form>
+<script>
+  document.getElementById("f").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = Object.fromEntries(new FormData(e.target).entries());
+    const r = await fetch("/api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(fd) });
+    if (r.ok) location.href = "/thanks"; else document.getElementById("err").textContent = (await r.json()).error;
+  });
+</script>`);
+
 createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const html = (s, code = 200) => { res.writeHead(code, { "content-type": "text/html; charset=utf-8" }); res.end(s); };
   if (url.pathname === "/") return html(LANDING);
   if (url.pathname === "/register") return html(REGISTER(url.searchParams.get("captcha") !== "off"));
+  if (url.pathname === "/iframe-host") return html(IFRAME_HOST);
+  if (url.pathname === "/embedded-form") return html(EMBEDDED_FORM);
+  if (url.pathname === "/shadow") return html(SHADOW);
+  if (url.pathname === "/login") return html(LOGIN);
   if (url.pathname === "/thanks") return html(THANKS);
   if (url.pathname === "/submissions") {
     res.writeHead(200, { "content-type": "application/json" });
     return res.end(JSON.stringify(submissions.map(({ pw, pw2, ...rest }) => ({ ...rest, pw: pw ? `<${pw.length} chars>` : null })), null, 2));
+  }
+  if (url.pathname === "/api/login" && req.method === "POST") {
+    let body = ""; for await (const c of req) body += c;
+    const data = JSON.parse(body);
+    if (!data.email || !data.password) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: "Enter your email and password" })); }
+    submissions.push({ source: "login", logged_in_as: data.email, password_len: String(data.password).length, receivedAt: new Date().toISOString() });
+    res.writeHead(200, { "content-type": "application/json" }); return res.end("{}");
   }
   if (url.pathname === "/api/register" && req.method === "POST") {
     let body = ""; for await (const c of req) body += c;
