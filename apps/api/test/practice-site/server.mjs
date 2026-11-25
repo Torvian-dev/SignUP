@@ -32,7 +32,7 @@ const LANDING = page("Acme Supplier Portal", `
   <p>Join our approved supplier list to receive purchase orders and tenders.</p>
   <p><a class="btn" href="/register">Register as a supplier</a></p>`);
 
-const REGISTER = page("Supplier registration", `
+const REGISTER = (CAPTCHA_ON) => page("Supplier registration", `
   <h1>Supplier registration</h1>
   <div id="app"></div>
 <script>
@@ -66,9 +66,10 @@ const REGISTER = page("Supplier registration", `
         <div class="row"><label for="pw2">Repeat password</label><input type="password" id="pw2" name="pw2" autocomplete="new-password" minlength="12" required></div>
         <div class="row check"><input type="checkbox" id="terms" name="terms" required> <label for="terms">I accept the supplier terms and privacy notice</label></div>
         <div class="row check"><input type="checkbox" id="news" name="news"> <label for="news">Send me tender alerts and marketing</label></div>
-        <div class="g-recaptcha" data-sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI" role="checkbox" aria-checked="false" tabindex="0"
-             onclick="document.getElementById('g-recaptcha-response').value='practice-token-'+Date.now();this.innerHTML='☑ Verified <small>(practice widget)</small>';this.setAttribute('aria-checked','true')">☐ I'm not a robot <small>(practice widget — click to verify)</small></div>
+        ${CAPTCHA_ON ? `<div class="g-recaptcha" data-sitekey="6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI" role="checkbox" aria-checked="false" tabindex="0"
+             onclick="document.getElementById('g-recaptcha-response').value='practice-token-'+Date.now();this.innerHTML='☑ Verified <small>(practice widget)</small>';this.setAttribute('aria-checked','true')">☐ I'm not a robot <small>(practice widget — click to verify)</small></div>` : ``}
         <textarea name="g-recaptcha-response" id="g-recaptcha-response" style="display:none"></textarea>
+        <input type="hidden" name="captchaExpected" value="${CAPTCHA_ON ? '1' : ''}">
         <p class="err" id="err"></p>
         <button type="submit">Create account</button>
       </form>\`,
@@ -88,7 +89,7 @@ const REGISTER = page("Supplier registration", `
     });
   }
   render();
-</script>`);
+</script>`);  // end REGISTER()
 
 const THANKS = page("Registration complete", `<h1>Thank you — your supplier account has been created</h1><p>We've sent a confirmation to your work e-mail.</p>`);
 
@@ -96,7 +97,7 @@ createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   const html = (s, code = 200) => { res.writeHead(code, { "content-type": "text/html; charset=utf-8" }); res.end(s); };
   if (url.pathname === "/") return html(LANDING);
-  if (url.pathname === "/register") return html(REGISTER);
+  if (url.pathname === "/register") return html(REGISTER(url.searchParams.get("captcha") !== "off"));
   if (url.pathname === "/thanks") return html(THANKS);
   if (url.pathname === "/submissions") {
     res.writeHead(200, { "content-type": "application/json" });
@@ -106,7 +107,7 @@ createServer(async (req, res) => {
     let body = ""; for await (const c of req) body += c;
     const data = JSON.parse(body);
     if (data.website) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: "Bot detected (honeypot filled)" })); }
-    if (!data["g-recaptcha-response"]) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: "Please complete the CAPTCHA" })); }
+    if (data.captchaExpected && !data["g-recaptcha-response"]) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: "Please complete the CAPTCHA" })); }
     if (!data.terms) { res.writeHead(400, { "content-type": "application/json" }); return res.end(JSON.stringify({ error: "You must accept the terms" })); }
     submissions.push({ ...data, receivedAt: new Date().toISOString() });
     res.writeHead(201, { "content-type": "application/json" }); return res.end("{}");

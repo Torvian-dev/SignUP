@@ -1,10 +1,11 @@
 import Link from "next/link";
-import { Activity, Gauge, KeyRound, PlayCircle, ScrollText, Settings2, Users } from "lucide-react";
+import { Activity, Gauge, KeyRound, Layers, PlayCircle, ScrollText, Settings2, Users } from "lucide-react";
 import { auth, signOut } from "@/auth";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: Gauge },
   { href: "/runs/new", label: "New automation", icon: PlayCircle },
+  { href: "/batches", label: "Batch sign-ups", icon: Layers },
   { href: "/runs", label: "Submission history", icon: Activity },
   { href: "/profiles", label: "Profiles", icon: Users },
   { href: "/admin/api-keys", label: "API keys", icon: KeyRound },

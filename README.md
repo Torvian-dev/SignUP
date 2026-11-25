@@ -72,7 +72,14 @@ Then sign in at http://localhost:3000 and follow these steps:
 
 Add an AI key under **API keys** (Claude, OpenAI or Gemini) and the agent maps unfamiliar fields itself on the first visit. Without one it uses memory and standard field hints, and leaves the rest for you on the review screen.
 
-**Automated version** of the same test (drives the real UI and saves screenshots):
+### Batch sign-ups (one website, many profiles)
+
+For a roster of real people — e.g. signing up a team of employees — enable **Policy & guardrails → Automatic submission**, then go to **Batch sign-ups → New batch**: paste the URL, tick the profiles, and set a quantity. The agent creates one account per profile, in order, each using that profile's own email and proxy, submitting automatically and moving on once the success page appears. A profile is **skipped** (never guessed) if a required field is uncertain or a CAPTCHA can't be solved automatically (CAPTCHA-gated sites need a solving-provider key). One account per profile per website still applies — it does not loop a single profile.
+
+Automated version:
+`E2E_PASSWORD=... node apps/api/test/e2e/batch-run.cjs` — creates 3 profiles and runs a batch through a local proxy.
+
+**Automated version** of the single-run test (drives the real UI and saves screenshots):
 `E2E_PASSWORD=... node apps/api/test/e2e/practice-run.cjs` (with Playwright installed).
 
 ## Quick start (local)
@@ -96,7 +103,8 @@ cd apps/web && npm ci && npm run dev
 
 ## Verified in this repo
 
-* **End to end on the practice site:** 7 runs through the real UI (sign-in → profile → run → review → live-view CAPTCHA → approve → submit). The site received every value correctly: names, email, phone, company, address, `GB` country code, date reformatted to `07/03/1985`, a generated 20-character password, terms ticked, marketing left unticked and the hidden trap field empty. Run 1 needed 9 manual corrections; every later run needed none.
+* **Batch sign-ups:** a 3-profile roster created 3 accounts fully automatically against the practice site (no human click), one at a time, each through its own proxy and email; the site received all three with correct data. Re-running stored exactly one account per profile.
+* **End to end on the practice site:** 7 single runs through the real UI (sign-in → profile → run → review → live-view CAPTCHA → approve → submit). The site received every value correctly: names, email, phone, company, address, `GB` country code, date reformatted to `07/03/1985`, a generated 20-character password, terms ticked, marketing left unticked and the hidden trap field empty. Run 1 needed 9 manual corrections; every later run needed none.
 
 * `apps/api`: `tsc --noEmit` is clean, and `vitest` passes (transforms, autocomplete heuristics).
 * `apps/web`: `tsc --noEmit` is clean, and `next build` succeeds (all 14 routes).

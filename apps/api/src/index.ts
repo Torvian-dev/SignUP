@@ -15,6 +15,7 @@ import { analyticsRouter } from "./routes/analytics.js";
 import { authRouter } from "./routes/auth.js";
 import { profilesRouter } from "./routes/profiles.js";
 import { providersRouter } from "./routes/providers.js";
+import { batchesRouter } from "./routes/batches.js";
 import { runsRouter } from "./routes/runs.js";
 
 const app = express();
@@ -41,6 +42,7 @@ app.use("/v1/auth", limiter(60_000, 20, "rl:auth:"), authRouter);
 app.use("/v1", requireAuth, limiter(60_000, 300, "rl:api:"));
 app.use("/v1/profiles", profilesRouter);
 app.use("/v1/runs", runsRouter);
+app.use("/v1/batches", batchesRouter);
 app.use("/v1/providers", providersRouter);
 app.use("/v1/analytics", analyticsRouter);
 app.use(errorHandler);

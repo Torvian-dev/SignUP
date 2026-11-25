@@ -58,6 +58,7 @@ const PolicyInput = z.object({
   aiProviderOrder: z.array(z.enum(["claude", "openai", "gemini"])).optional(),
   captchaProviderOrder: z.array(z.string()).optional(),
   autoAcceptConfidence: z.number().min(0.7).max(0.99).optional(),
+  allowAutoSubmit: z.boolean().optional(),
 });
 
 analyticsRouter.get("/policy", requirePermission("dashboard:read"), ah(async (req, res) => {
@@ -72,7 +73,7 @@ analyticsRouter.put("/policy", requirePermission("policy:write"), ah(async (req,
     require_review_every_step: p.requireReviewEveryStep, captcha_solving_enabled: p.captchaSolvingEnabled,
     captcha_max_spend_daily_usd: p.captchaMaxSpendDailyUsd, max_runs_per_domain_per_day: p.maxRunsPerDomainPerDay,
     max_concurrent_runs: p.maxConcurrentRuns, ai_provider_order: p.aiProviderOrder, captcha_provider_order: p.captchaProviderOrder,
-    auto_accept_confidence: p.autoAcceptConfidence,
+    auto_accept_confidence: p.autoAcceptConfidence, allow_auto_submit: p.allowAutoSubmit,
   };
   const entries = Object.entries(cols).filter(([, v]) => v !== undefined);
   if (entries.length) {

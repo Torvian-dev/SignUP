@@ -10,6 +10,7 @@ Covers deliverables 1–3 and 6–12: product architecture, technical diagrams, 
 |---|---|---|
 | **Profiles** | Enter details once. Unlimited profiles and unlimited custom fields. One proxy per profile. | `profiles*` tables · `services/profiles` · `/profiles` UI |
 | **Run an automation** | Paste a URL, pick a profile and click Start. | `POST /v1/runs` → BullMQ → worker |
+| **Batch sign-ups** | One URL × a roster of profiles; one account each, submitted automatically and in order. | `batches` table · `services/batch` · `POST /v1/batches` |
 | **Agent** | Opens the site, finds the form (following "Sign up" links if needed), maps and fills fields, handles CAPTCHAs, and moves through multi-step flows. | `automation/runOrchestrator.ts` |
 | **Review & approve** | Screenshot plus a table showing each field's value, confidence and reasoning. Fix anything, then approve. | `/runs/[id]` · `POST /v1/runs/:id/approve` |
 | **Learning** | Every approval or correction trains the next run. Fields seen before skip the LLM entirely. | `services/learning` |

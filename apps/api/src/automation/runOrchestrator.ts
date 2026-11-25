@@ -1,3 +1,4 @@
+import type { Page } from "playwright";
 /**
  * The agent loop for one automation run.
  *
@@ -55,6 +56,8 @@ async function nextControl(runId: string, timeoutMs: number): Promise<Control | 
 }
 
 export class CancelledError extends Error {}
+/** A profile the batch should skip (auto-submit only): can't fill/solve safely. Not retried. */
+export class SkipProfileError extends Error {}
 
 export async function executeRun(orgId: string, runId: string): Promise<void> {
   const run = await withOrg(orgId, async (tx) => (await tx.query("SELECT * FROM automation_runs WHERE id=$1", [runId])).rows[0]);
@@ -102,6 +105,7 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
         if (/thank you|success|confirmed|we('ve| have) sent|check your (email|inbox)|account (has been )?created/i.test(await page.innerText("body").catch(() => ""))) {
           return await finish(orgId, runId, session, profile.id, domain, createdAccount, generatedPassword, values["personal.email"]);
         }
+        if (run.auto_submit) throw new SkipProfileError("no form found on the page");
         await escalateManual(orgId, runId, session, "No form found on this page — please navigate to the form in the live view");
         continue;
       }
@@ -134,7 +138,7 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
         [runId, visibleCount, results.filter((r) => r.status === "filled").length, mapped.completionConfidence]));
 
       // CAPTCHA
-      const captcha = await handleCaptcha(orgId, runId, domain, session, profile.proxy ?? undefined);
+      const captcha = await handleCaptcha(orgId, runId, domain, session, profile.proxy ?? undefined, { autoSubmit: run.auto_submit });
 
       // Decide: auto-advance or stop for review
       const primary = pickPrimaryButton(analysis, mapped.submitLocatorHint);
@@ -143,7 +147,7 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
         const d = mapped.decisions.find((x) => x.fieldId === f.id);
         return r?.status === "filled" && r.valid && (d?.confidence ?? 0) >= autoAccept;
       });
-      const canAutoAdvance = primary?.role === "advance" && requiredOk && !policy?.require_review_every_step;
+      const canAutoAdvance = primary?.role === "advance" && requiredOk && (run.auto_submit || !policy?.require_review_every_step);
 
       if (canAutoAdvance && primary) {
         for (const d of mapped.decisions) if (d.decisionId && d.profilePath) await recordOutcome(orgId, run.created_by, { decisionId: d.decisionId, outcome: "accepted", finalPath: d.profilePath, finalTransform: d.transform });
@@ -151,6 +155,37 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
         await clickAndSettle(page, primary.locator);
         await saveCheckpoint(orgId, runId, step + 1, page.url());
         continue;
+      }
+
+      // ---- Auto-submit (batch roster: one account per profile, no human click) ----
+      if (run.auto_submit) {
+        const reasons: string[] = [];
+        if (!primary) reasons.push("no submit button found");
+        if (captcha?.solvedBy === "unsolved") reasons.push("CAPTCHA could not be solved automatically");
+        // Required fields must be safe to submit unseen. Trust a field that is filled and the site
+        // accepts it, when the mapping is deterministic (heuristic), human-confirmed before (memory),
+        // or a high-confidence AI mapping. Terms are ticked at submission, so they're exempt here.
+        for (const f of fields.filter((x) => x.required && x.visible)) {
+          const r = results.find((x) => x.fieldId === f.id);
+          const d = mapped.decisions.find((x) => x.fieldId === f.id);
+          if (d?.profilePath === "consent.terms") continue;
+          const trusted = d?.source === "memory" || d?.source === "heuristic" || (d?.confidence ?? 0) >= autoAccept;
+          if (!r || r.status !== "filled" || !r.valid || !d?.profilePath || !trusted) {
+            reasons.push(`"${f.label ?? f.name ?? f.kind}" could not be filled confidently`);
+          }
+        }
+        if (reasons.length || !primary) throw new SkipProfileError(reasons.slice(0, 3).join("; ") || "cannot submit safely");
+        // Accept every mapping, tick terms, submit — on the user's standing instruction for this roster.
+        const autoCtrl = { type: "approve" as const, userId: run.created_by, overrides: [] };
+        await applyOverridesAndLearn(orgId, runId, session, fields, mapped.decisions, results, values, autoCtrl, profile.addresses.primary?.countryCode);
+        await setStatus(orgId, runId, "submitting", { approved_by: run.created_by });
+        await writeAudit({ orgId, actorUserId: run.created_by, action: "run.submit", targetType: "run", targetId: runId, metadata: { domain, auto: true, batch: run.batch_id } });
+        await emit(orgId, runId, "navigation", `Auto-submitting: "${primary.text}"`);
+        await clickAndSettle(page, primary.locator);
+        await withOrg(orgId, (tx) => tx.query("UPDATE automation_runs SET submitted_at = now() WHERE id=$1", [runId]));
+        await saveCheckpoint(orgId, runId, step + 1, page.url());
+        await maybeVerifyEmail(orgId, runId, page, domain, values["personal.email"]);
+        continue;  // next iteration re-analyses; a success/confirmation page ends the run
       }
 
       // ---- Review gate ----
@@ -174,17 +209,16 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
       await saveCheckpoint(orgId, runId, step + 1, page.url());
 
       // Post-submit: email verification?
-      const body = (await page.innerText("body").catch(() => "")).toLowerCase();
-      if (/verify your email|check your (email|inbox)|confirmation (email|link)/.test(body) && values["personal.email"]) {
-        await emit(orgId, runId, "verification", "Waiting for verification email");
-        const link = await waitForVerificationLink(orgId, values["personal.email"]!, domain, new Date(Date.now() - 60_000));
-        if (link) { await page.goto(link); await emit(orgId, runId, "verification", "Email verified"); }
-        else await emit(orgId, runId, "verification", "No verification email found within 5 minutes — verify manually", undefined, "warn");
-      }
+      await maybeVerifyEmail(orgId, runId, page, domain, values["personal.email"]);
     }
     throw new Error(`exceeded ${MAX_STEPS} steps`);
   } catch (err) {
     if (err instanceof CancelledError) { await setStatus(orgId, runId, "cancelled"); return; }
+    if (err instanceof SkipProfileError) {
+      await setStatus(orgId, runId, "failed", { error_code: "skipped", error_message: err.message.slice(0, 500) });
+      await emit(orgId, runId, "note", `Skipped: ${err.message}`, undefined, "warn");
+      return;  // resolves so the batch can move to the next profile
+    }
     logger.error({ err, runId }, "run failed");
     await setStatus(orgId, runId, "failed", { error_code: "run_error", error_message: (err as Error).message.slice(0, 500) });
     throw err;
@@ -203,6 +237,15 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
     }
     return null;
   }
+}
+
+async function maybeVerifyEmail(orgId: string, runId: string, page: Page, domain: string, email?: string) {
+  const body = (await page.innerText("body").catch(() => "")).toLowerCase();
+  if (!/verify your email|check your (email|inbox)|confirmation (email|link)/.test(body) || !email) return;
+  await emit(orgId, runId, "verification", "Waiting for verification email");
+  const link = await waitForVerificationLink(orgId, email, domain, new Date(Date.now() - 60_000));
+  if (link) { await page.goto(link); await emit(orgId, runId, "verification", "Email verified"); }
+  else await emit(orgId, runId, "verification", "No verification email found within 5 minutes — verify manually", undefined, "warn");
 }
 
 async function persistStep(orgId: string, runId: string, step: number, a: PageAnalysis) {
@@ -229,7 +272,7 @@ async function persistStep(orgId: string, runId: string, step: number, a: PageAn
 
 type CaptchaStatus = { kind: string; solvedBy: string } | null;
 
-async function handleCaptcha(orgId: string, runId: string, domain: string, s: BrowserSession, proxy?: { type: string; host: string; port: number; username?: string; password?: string }): Promise<CaptchaStatus> {
+async function handleCaptcha(orgId: string, runId: string, domain: string, s: BrowserSession, proxy?: { type: string; host: string; port: number; username?: string; password?: string }, opts: { autoSubmit?: boolean } = {}): Promise<CaptchaStatus> {
   const found = await detectCaptcha(s.page);
   if (!found) return null;
   await setStatus(orgId, runId, "solving_captcha");
@@ -242,6 +285,11 @@ async function handleCaptcha(orgId: string, runId: string, domain: string, s: Br
     await injectSolution(s.page, found, outcome.solution.token, outcome.solution.text);
     await emit(orgId, runId, "captcha", `Solved via ${outcome.provider}`);
     return { kind: found.kind, solvedBy: outcome.provider };
+  }
+  // In auto-submit (batch) mode there is no person watching — report unsolved and let the caller skip.
+  if (opts.autoSubmit) {
+    await emit(orgId, runId, "captcha", `CAPTCHA could not be solved automatically: ${outcome.reason}`, undefined, "warn");
+    return { kind: found.kind, solvedBy: "unsolved" };
   }
   await escalateManual(orgId, runId, s, `CAPTCHA needs a person: ${outcome.reason}`);
   const stillThere = await detectCaptcha(s.page);

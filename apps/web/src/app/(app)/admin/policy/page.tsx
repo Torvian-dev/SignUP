@@ -9,6 +9,7 @@ export default async function PolicyPage() {
     "use server";
     await api("/analytics/policy", { method: "PUT", body: JSON.stringify({
       requireReviewEveryStep: fd.get("requireReviewEveryStep") === "on",
+      allowAutoSubmit: fd.get("allowAutoSubmit") === "on",
       captchaSolvingEnabled: fd.get("captchaSolvingEnabled") === "on",
       captchaMaxSpendDailyUsd: Number(fd.get("captchaMaxSpendDailyUsd")),
       maxRunsPerDomainPerDay: Number(fd.get("maxRunsPerDomainPerDay")),
@@ -27,6 +28,13 @@ export default async function PolicyPage() {
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="requireReviewEveryStep" defaultChecked={p.require_review_every_step} />Also stop for review on every “Next / Continue” step</label>
           <div className="space-y-1"><Label htmlFor="aac">Auto-advance only when every required field is at least this confident</Label>
             <Input id="aac" name="autoAcceptConfidence" type="number" step="0.01" min="0.7" max="0.99" defaultValue={p.auto_accept_confidence} /></div>
+        </CardContent>
+      </Card>
+      <Card className="border-[var(--viz-warning)]">
+        <CardHeader><CardTitle>Automatic submission (batch sign-ups)</CardTitle>
+          <CardDescription>Off by default. When on, a batch run submits each account without a review click, and solves CAPTCHAs through your configured providers. A profile is skipped (not guessed) if a required field is uncertain or a CAPTCHA can&apos;t be solved. One account per profile per site still applies.</CardDescription></CardHeader>
+        <CardContent>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" name="allowAutoSubmit" defaultChecked={p.allow_auto_submit} />Allow batches to submit automatically on this organisation&apos;s behalf</label>
         </CardContent>
       </Card>
       <Card>

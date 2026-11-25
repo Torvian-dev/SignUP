@@ -122,8 +122,8 @@ The matrix is enforced in `middleware/rbac.ts`. **Tenant isolation** is enforced
 | Data residency | Single region (UK South) by default; `organizations.data_region` for EU/US deployments |
 
 ### Responsible-use guardrails (built in)
-* A human approves every final submission.
-* **One account per profile per website.** A repeat "signup" becomes "login".
+* A human approves every final submission, unless an owner/admin explicitly turns on **automatic submission** (off by default) for batch sign-ups across a roster of profiles. Even then, a profile is skipped rather than submitted on a weak AI guess or an unsolved CAPTCHA.
+* **One account per profile per website.** A repeat "signup" becomes "login". Batches never loop a single profile — they create at most one account per distinct profile (person).
 * Daily per-site run caps, an org concurrency cap, and a daily CAPTCHA spend cap.
 * A platform blocklist (identity providers, payment processors) plus org-level allow and block rules.
 * Each profile keeps a stable browser identity and one proxy. There is no fingerprint randomisation or proxy hopping.

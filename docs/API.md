@@ -51,6 +51,18 @@ Rate limits: `/auth/*` allows 20/min per IP. Everything else allows 300/min per 
 | POST | `/runs/:id/cancel` | run:cancel | → 202 |
 | POST | `/runs/:id/resume` | run:create | Only from `paused`/`failed`. Re-queues at priority 1 from the checkpoint |
 
+## Batch sign-ups
+One URL × a roster of profiles, one account per profile, submitted automatically (requires org policy `allow_auto_submit`).
+| Method | Path | Permission | Notes |
+|---|---|---|---|
+| POST | `/batches` | run:create | `{url, profileIds[], quantity?, intent, onFailure: skip\|pause}` → 202 `{id}`. 422 if auto-submit is disabled |
+| GET | `/batches` | run:read | List with `processed/succeeded/failed/quantity` |
+| GET | `/batches/:id` | run:read | Batch + its per-profile `runs[]` (sequential) |
+| POST | `/batches/:id/cancel` | run:cancel | Stops after the current profile |
+| POST | `/batches/:id/resume` | run:create | Resume a batch paused by a failure |
+
+Each profile becomes one `automation_run` with `auto_submit=true`. The agent submits without review when every required field is filled and trusted (learned, deterministic, or high-confidence AI) and the CAPTCHA is solved; otherwise that profile is skipped. Processing is strictly sequential — one account is fully created before the next profile's email and proxy are used.
+
 ## Provider credentials (admin)
 | Method | Path | Notes |
 |---|---|---|
@@ -65,7 +77,7 @@ Rate limits: `/auth/*` allows 20/min per IP. Everything else allows 300/min per 
 | Method | Path | Permission | Notes |
 |---|---|---|---|
 | GET | `/analytics/dashboard` | dashboard:read | `{kpis, runsByDay, captcha, confidenceHist, learning, providerUsage, apiStatus, profiles, recent, timeSaved}` |
-| GET / PUT | `/analytics/policy` | read: dashboard:read · write: policy:write | `{requireReviewEveryStep, captchaSolvingEnabled, captchaMaxSpendDailyUsd, maxRunsPerDomainPerDay, maxConcurrentRuns, aiProviderOrder, captchaProviderOrder, autoAcceptConfidence}` |
+| GET / PUT | `/analytics/policy` | read: dashboard:read · write: policy:write | `{requireReviewEveryStep, captchaSolvingEnabled, captchaMaxSpendDailyUsd, maxRunsPerDomainPerDay, maxConcurrentRuns, aiProviderOrder, captchaProviderOrder, autoAcceptConfidence, allowAutoSubmit}` |
 | GET | `/analytics/audit?action=&before=&limit=` | audit:read | Includes `hash` for chain verification |
 
 ## Health

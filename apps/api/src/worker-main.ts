@@ -9,6 +9,7 @@ import { db } from "./lib/db.js";
 import { logger } from "./lib/logger.js";
 import { redis } from "./lib/redis.js";
 import { executeRun } from "./automation/runOrchestrator.js";
+import { onRunFinished } from "./services/batch/batchService.js";
 import { maintenanceQueue, type RunJob } from "./queue/queues.js";
 
 const runWorker = new Worker<RunJob>(
@@ -16,6 +17,7 @@ const runWorker = new Worker<RunJob>(
   async (job) => {
     logger.info({ runId: job.data.runId, attempt: job.attemptsMade + 1 }, "run started");
     await executeRun(job.data.orgId, job.data.runId);
+    await onRunFinished(job.data.orgId, job.data.runId).catch((e) => logger.error({ e }, "batch advance failed"));
   },
   { connection: redis, concurrency: env.WORKER_CONCURRENCY, lockDuration: 120_000, stalledInterval: 60_000 },
 );
@@ -38,7 +40,10 @@ const maintenanceWorker = new Worker(
 await maintenanceQueue.upsertJobScheduler("refresh-captcha-stats", { every: 15 * 60_000 }, { name: "refresh-captcha-stats" });
 await maintenanceQueue.upsertJobScheduler("purge-rotated-secrets", { every: 60 * 60_000 }, { name: "purge-rotated-secrets" });
 
-runWorker.on("failed", (job, err) => logger.error({ runId: job?.data.runId, err: err.message }, "run job failed"));
+runWorker.on("failed", (job, err) => {
+  logger.error({ runId: job?.data.runId, err: err.message }, "run job failed");
+  if (job) void onRunFinished(job.data.orgId, job.data.runId).catch((e) => logger.error({ e }, "batch advance failed"));
+});
 
 const shutdown = async () => {
   logger.info("worker draining");
