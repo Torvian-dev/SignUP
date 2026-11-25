@@ -17,7 +17,6 @@ timeout /t 25 >nul
 start http://localhost:3000
 echo.
 echo FormAgent is running at http://localhost:3000
-echo Admin email:    admin@formagent.local
-for /f "tokens=2 delims==" %%p in ('findstr /b BOOTSTRAP_ADMIN_PASSWORD .env') do echo Admin password: %%p
+echo First time? Create your account (email + password) when the page opens.
 echo.
 pause

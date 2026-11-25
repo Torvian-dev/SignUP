@@ -7,6 +7,18 @@ import { createOrgDek } from "../../lib/crypto.js";
 import { db } from "../../lib/db.js";
 import { logger } from "../../lib/logger.js";
 
+export async function usersExist(): Promise<boolean> {
+  const { rows } = await db.query<{ n: string }>("SELECT count(*) AS n FROM users");
+  return Number(rows[0]!.n) > 0;
+}
+
+/** Create the very first owner from the setup screen. Refuses once any account exists. */
+export async function createFirstOwner(input: { email: string; password: string; name?: string; org?: string }): Promise<string> {
+  if (await usersExist()) throw new Error("setup already complete");
+  const r = await createOwner(input);
+  return r.userId;
+}
+
 export async function createOwner(input: { email: string; password: string; name?: string; org?: string }): Promise<{ created: boolean; userId: string }> {
   const email = input.email.toLowerCase().trim();
   if (input.password.length < 12) throw new Error("password must be at least 12 characters");

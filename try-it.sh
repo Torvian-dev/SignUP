@@ -29,17 +29,13 @@ for i in $(seq 1 90); do
 done
 echo
 
-EMAIL=$(grep '^BOOTSTRAP_ADMIN_EMAIL=' .env | cut -d= -f2-)
-PASS=$(grep '^BOOTSTRAP_ADMIN_PASSWORD=' .env | cut -d= -f2-)
-
 cat <<MSG
 
 ────────────────────────────────────────────────────────────
   FormAgent is running.
 
   Open:     http://localhost:3000
-  Sign in:  ${EMAIL}
-  Password: ${PASS}
+  First time? You'll be asked to create your account (email + password).
 
   Try a run:
     1. Profiles → New profile (or Import CSV) — add your details.

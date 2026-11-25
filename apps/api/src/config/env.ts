@@ -46,7 +46,7 @@ const Env = z.object({
   ALLOW_PRIVATE_TARGETS: z.enum(["true", "false"]).default("false"),
 
   // First-boot admin bootstrap (Docker). Ignored once any user exists.
-  BOOTSTRAP_ADMIN_EMAIL: z.string().email().optional(),
+  BOOTSTRAP_ADMIN_EMAIL: z.preprocess((v) => (v === "" ? undefined : v), z.string().email().optional()),
   BOOTSTRAP_ADMIN_PASSWORD: z.string().optional(),
   BOOTSTRAP_ADMIN_NAME: z.string().optional(),
   BOOTSTRAP_ADMIN_ORG: z.string().optional(),

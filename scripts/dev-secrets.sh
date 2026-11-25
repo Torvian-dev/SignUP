@@ -18,7 +18,9 @@ AUTH_MICROSOFT_ENTRA_ID_ID=
 AUTH_MICROSOFT_ENTRA_ID_SECRET=
 AUTH_MICROSOFT_ENTRA_ID_ISSUER=
 ANTHROPIC_API_KEY=
-BOOTSTRAP_ADMIN_EMAIL=admin@formagent.local
-BOOTSTRAP_ADMIN_PASSWORD=$(openssl rand -base64 12 | tr -d '/+=' | cut -c1-16)
-BOOTSTRAP_ADMIN_ORG=My Workspace
+# Leave these blank: on first run the app shows a "Create your account" screen.
+# (Set them only if you want a non-interactive/headless first admin.)
+BOOTSTRAP_ADMIN_EMAIL=
+BOOTSTRAP_ADMIN_PASSWORD=
+BOOTSTRAP_ADMIN_ORG=
 EOF

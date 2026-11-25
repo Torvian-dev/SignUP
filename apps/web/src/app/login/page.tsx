@@ -1,7 +1,10 @@
+import { redirect } from "next/navigation";
 import { oauthEnabled, signIn } from "@/auth";
+import { needsSetup } from "@/lib/setup";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from "@/components/ui";
 
-export default function LoginPage() {
+export default async function LoginPage() {
+  if (await needsSetup()) redirect("/setup");
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">

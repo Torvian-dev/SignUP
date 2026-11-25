@@ -10,6 +10,7 @@ import { z } from "zod";
 import { env } from "../config/env.js";
 import { createOrgDek, decryptForOrg } from "../lib/crypto.js";
 import { verifyTotp } from "../lib/totp.js";
+import { createFirstOwner, usersExist } from "../services/auth/adminSetup.js";
 import { db } from "../lib/db.js";
 import { HttpError } from "../lib/errors.js";
 import { audit } from "../middleware/audit.js";
@@ -24,6 +25,26 @@ function requireInternal(secret: string | undefined) {
   const b = Buffer.from(env.INTERNAL_EXCHANGE_SECRET);
   if (a.length !== b.length || !timingSafeEqual(a, b)) throw new HttpError(401, "unauthenticated", "bad internal secret");
 }
+
+/** Is this a brand-new install with no accounts yet? (first-run setup screen) */
+authRouter.post("/setup-status", ah(async (req, res) => {
+  requireInternal(req.get("x-internal-secret"));
+  res.json({ needsSetup: !(await usersExist()) });
+}));
+
+/** Create the first owner account from the setup screen. Only works when no account exists yet. */
+authRouter.post("/setup", ah(async (req, res) => {
+  requireInternal(req.get("x-internal-secret"));
+  const body = parse(z.object({
+    email: z.string().email(), name: z.string().max(120).optional(),
+    password: z.string().min(12, "password must be at least 12 characters").max(200),
+    org: z.string().max(120).optional(),
+  }), req.body);
+  if (await usersExist()) throw new HttpError(409, "setup_done", "an account already exists — sign in instead");
+  const userId = await createFirstOwner(body);
+  await audit({ orgId: null, actorUserId: userId, action: "profile.create", targetType: "setup", ip: req.ip });
+  res.status(201).json({ userId });
+}));
 
 /** Used by the Auth.js Credentials provider. Constant-time-ish: always runs argon2. */
 authRouter.post("/verify-password", ah(async (req, res) => {
