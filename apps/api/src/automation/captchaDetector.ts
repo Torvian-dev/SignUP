@@ -27,6 +27,11 @@ export interface DetectedCaptcha {
 export async function detectCaptcha(page: Page): Promise<DetectedCaptcha | null> {
   const found = await page.evaluate(() => {
     const q = (s: string) => document.querySelector(s);
+    // Already solved (by a provider token or by the reviewer in the live view)? Nothing to do.
+    const solved = Array.from(document.querySelectorAll<HTMLTextAreaElement | HTMLInputElement>(
+      "textarea[name='g-recaptcha-response'], textarea[name='h-captcha-response'], input[name='cf-turnstile-response']"))
+      .some((el) => el.value.trim().length > 0);
+    if (solved) return null;
     const attr = (el: Element | null, a: string) => el?.getAttribute(a) ?? undefined;
     const fromSrc = (sel: string, key = "k") => {
       const f = q(sel) as HTMLIFrameElement | null;

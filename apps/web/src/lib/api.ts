@@ -10,7 +10,7 @@ export async function accessToken(): Promise<string> {
   const token = await getToken({
     req: { headers: Object.fromEntries(h.entries()), cookies: Object.fromEntries(c.getAll().map((x) => [x.name, x.value])) } as any,
     secret: process.env.AUTH_SECRET!,
-    secureCookie: process.env.NODE_ENV === "production",
+    secureCookie: (process.env.AUTH_URL ?? "").startsWith("https://"),
   });
   if (!token?.at) throw new Error("not authenticated");
   return token.at as string;

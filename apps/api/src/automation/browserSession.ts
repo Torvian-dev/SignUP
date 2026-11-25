@@ -50,7 +50,7 @@ export async function openSession(profile: DecryptedProfile): Promise<BrowserSes
   // Remote browser (Browserless/Browserbase) or local Chromium in the worker pod.
   const browser = env.BROWSER_WS_ENDPOINT
     ? await chromium.connectOverCDP(env.BROWSER_WS_ENDPOINT)
-    : await chromium.launch({ headless: true, args: ["--disable-dev-shm-usage"] });
+    : await chromium.launch({ headless: true, executablePath: env.CHROMIUM_EXECUTABLE_PATH, args: ["--disable-dev-shm-usage"] });
 
   const storage = id.storage_blob_path
     ? await getDecrypted(profile.orgId, BLOB.browserState, id.storage_blob_path)
@@ -66,6 +66,9 @@ export async function openSession(profile: DecryptedProfile): Promise<BrowserSes
     acceptDownloads: false,
     permissions: [],
   });
+  // Dev runners (tsx/esbuild keepNames) wrap functions in __name(); functions passed to page.evaluate
+  // would throw in the page without this no-op shim. Harmless in production builds.
+  await context.addInitScript("globalThis.__name = globalThis.__name || ((f) => f);");
   context.setDefaultTimeout(20_000);
   context.setDefaultNavigationTimeout(45_000);
 

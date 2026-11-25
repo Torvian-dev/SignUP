@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src --ext .ts",
     "test": "vitest run",
-    "migrate": "sh ../../db/migrate.sh && psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f ../../db/seed.sql"
+    "migrate": "sh ../../db/migrate.sh && psql \"$DATABASE_URL\" -v ON_ERROR_STOP=1 -q -f ../../db/seed.sql",
+    "create-admin": "tsx scripts/create-admin.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.11.0",
@@ -40,7 +41,7 @@
     "pg": "^8.13.1",
     "pino": "^9.6.0",
     "pino-http": "^10.3.0",
-    "playwright": "1.49.1",
+    "playwright": "1.63.0",
     "rate-limit-redis": "^4.2.0",
     "tldts": "^6.1.70",
     "zod": "^4.6.7"

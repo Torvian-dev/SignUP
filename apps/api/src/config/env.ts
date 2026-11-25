@@ -9,8 +9,9 @@ const Env = z.object({
   REDIS_URL: z.string().default("redis://localhost:6379"),
 
   // JWT: API access tokens are signed with ES256. Auth.js (web) exchanges its session for these.
-  JWT_PRIVATE_KEY_PEM: z.string(),
-  JWT_PUBLIC_KEY_PEM: z.string(),
+  // .env files and Docker env_file keep "\n" literally — normalise to real newlines.
+  JWT_PRIVATE_KEY_PEM: z.string().transform((v) => v.replace(/\\n/g, "\n")),
+  JWT_PUBLIC_KEY_PEM: z.string().transform((v) => v.replace(/\\n/g, "\n")),
   JWT_ISSUER: z.string().default("formagent-api"),
   JWT_AUDIENCE: z.string().default("formagent"),
   ACCESS_TOKEN_TTL_SEC: z.coerce.number().default(900),
@@ -34,6 +35,11 @@ const Env = z.object({
   // Browser-Use navigator sidecar for open-ended navigation fallback
   NAVIGATOR_URL: z.string().url().default("http://navigator:8088"),
 
+  // Local Chromium binary override (e.g. a preinstalled browser). Unset = Playwright's bundled browser.
+  CHROMIUM_EXECUTABLE_PATH: z.string().optional(),
+  // DEVELOPMENT ONLY: allow runs against localhost / private IPs (practice site, E2E tests). Refused in production.
+  ALLOW_PRIVATE_TARGETS: z.enum(["true", "false"]).default("false"),
+
   WORKER_CONCURRENCY: z.coerce.number().default(2),
   LOG_LEVEL: z.string().default("info"),
 });
@@ -41,3 +47,4 @@ const Env = z.object({
 export type Env = z.infer<typeof Env>;
 export const env: Env = Env.parse(process.env);
 export const isProd = env.NODE_ENV === "production";
+if (isProd && env.ALLOW_PRIVATE_TARGETS === "true") throw new Error("ALLOW_PRIVATE_TARGETS must not be enabled in production");

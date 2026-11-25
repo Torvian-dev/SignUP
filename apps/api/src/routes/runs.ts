@@ -12,6 +12,8 @@ import { requirePermission } from "../middleware/rbac.js";
 import { enqueueRun } from "../queue/queues.js";
 import { assertPublicUrl, checkRunAllowed } from "../services/policy/policyGuard.js";
 import { screenChannel } from "../automation/liveView.js";
+import { getDecryptedProfile } from "../services/profiles/profileService.js";
+import { buildVocabulary } from "../services/profiles/profileVocabulary.js";
 
 export const runsRouter = Router();
 const control = (runId: string) => `run:${runId}:control`;
@@ -68,16 +70,24 @@ runsRouter.get("/:id/review", requirePermission("run:review"), ah(async (req, re
        FROM detected_fields f LEFT JOIN ai_decisions d ON d.field_id=f.id
        WHERE f.step_id=$1 AND f.visible ORDER BY f.id`, [stepId])).rows;
     const results = new Map<string, any>((run.checkpoint.review.results ?? []).map((r: any) => [r.fieldId, r]));
-    return { run: { ...run, checkpoint: undefined, submitButton: run.checkpoint.review.submit?.text },
+    return { run: { ...run, checkpoint: undefined, submitButton: run.checkpoint.review.submit?.text, captcha: run.checkpoint.review.captcha ?? null, stepId },
              fields: fields.map((f) => ({ ...f, fill: results.get(f.id) ?? null })) };
   });
-  res.json(data);
+  // Slot vocabulary for the reviewer's "correct it" dropdown: paths + labels only, never values.
+  const profileId = await withOrg(a.orgId, async (tx) => (await tx.query("SELECT profile_id FROM automation_runs WHERE id=$1", [req.params.id])).rows[0]?.profile_id);
+  const slots = profileId
+    ? buildVocabulary(await getDecryptedProfile(a.orgId, profileId)).map((s) => ({ path: s.path, label: s.label, hasValue: s.hasValue }))
+    : [];
+  res.json({ ...data, slots });
 }));
 
 runsRouter.get("/:id/screenshot", requirePermission("run:review"), ah(async (req, res) => {
   const a = auth(req);
+  // ?step=<run_steps.id> pins the exact page under review (and gives each review a distinct URL so browsers can't reuse a cached image).
+  const step = typeof req.query.step === "string" && /^[0-9a-f-]{36}$/.test(req.query.step) ? req.query.step : null;
   const key = await withOrg(a.orgId, async (tx) => (await tx.query(
-    "SELECT screenshot_path FROM run_steps WHERE run_id=$1 AND screenshot_path IS NOT NULL ORDER BY step_index DESC LIMIT 1", [req.params.id])).rows[0]?.screenshot_path);
+    `SELECT screenshot_path FROM run_steps WHERE run_id=$1 AND screenshot_path IS NOT NULL AND ($2::uuid IS NULL OR id=$2)
+     ORDER BY finished_at DESC NULLS LAST LIMIT 1`, [req.params.id, step])).rows[0]?.screenshot_path);
   const png = key ? await getDecrypted(a.orgId, env.BLOB_CONTAINER_ARTIFACTS, key) : null;
   if (!png) throw notFound("screenshot");
   res.type("png").set("cache-control", "private, no-store").send(png);
@@ -126,7 +136,7 @@ runsRouter.post("/:id/manual", requirePermission("run:review"), ah(async (req, r
   const body = parse(z.discriminatedUnion("type", [
     z.object({ type: z.literal("manual_done") }),
     z.object({ type: z.literal("input"), event: z.discriminatedUnion("kind", [
-      z.object({ kind: z.literal("click"), x: z.number(), y: z.number() }),
+      z.object({ kind: z.literal("click"), x: z.number().min(0).max(1), y: z.number().min(0).max(1) }),
       z.object({ kind: z.literal("type"), text: z.string().max(500) }),
       z.object({ kind: z.literal("key"), key: z.enum(["Enter", "Tab", "Backspace", "Escape", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"]) }),
       z.object({ kind: z.literal("scroll"), dy: z.number().min(-3000).max(3000) }),
@@ -142,7 +152,7 @@ runsRouter.get("/:id/events", requirePermission("run:read"), ah(async (req, res)
   const runId = req.params.id!;
   const exists = await withOrg(a.orgId, async (tx) => (await tx.query("SELECT 1 FROM automation_runs WHERE id=$1", [runId])).rowCount);
   if (!exists) throw notFound("run");
-  res.set({ "content-type": "text/event-stream", "cache-control": "no-cache", connection: "keep-alive", "x-accel-buffering": "no" });
+  res.set({ "content-type": "text/event-stream", "cache-control": "no-cache, no-transform", connection: "keep-alive", "x-accel-buffering": "no" });
   res.flushHeaders();
 
   const backlog = await withOrg(a.orgId, async (tx) => (await tx.query(

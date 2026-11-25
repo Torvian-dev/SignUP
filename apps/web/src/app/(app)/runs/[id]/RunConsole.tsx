@@ -17,11 +17,6 @@ interface ReviewField {
   fill: { status: string; valid: boolean; validationMessage?: string; displayValue?: string } | null;
 }
 
-const PROFILE_PATHS = [
-  "personal.firstName", "personal.lastName", "personal.fullName", "personal.email", "personal.phone",
-  "address.primary.line1", "address.primary.line2", "address.primary.city", "address.primary.region", "address.primary.postcode", "address.primary.country",
-  "generated.password", "consent.terms", "consent.marketing",
-];
 
 function confTone(c: number) { return c >= 0.9 ? "good" : c >= 0.7 ? "warning" : "critical"; }
 
@@ -85,13 +80,16 @@ export function RunConsole({ runId }: { runId: string }) {
 }
 
 function ReviewPanel({ runId }: { runId: string }) {
-  const { data } = useSWR<{ run: any; fields: ReviewField[] }>(`/api/v1/runs/${runId}/review`, fetcher);
+  const { data } = useSWR<{ run: any; fields: ReviewField[]; slots: { path: string; label: string; hasValue: boolean }[] }>(`/api/v1/runs/${runId}/review`, fetcher);
   const [overrides, setOverrides] = useState<Record<string, { profilePath?: string | null; value?: string }>>({});
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const issues = useMemo(() => (data?.fields ?? []).filter((f) => !overrides[f.id] && (
-    (f.required && f.fill?.status !== "filled") || f.fill?.valid === false || Number(f.confidence ?? 0) < 0.7)), [data, overrides]);
+    f.profile_path !== "consent.terms" &&
+    ((f.required && f.fill?.status !== "filled") || f.fill?.valid === false ||
+     // low confidence only matters for fields we actually filled, or required ones
+     ((f.profile_path || f.required) && Number(f.confidence ?? 0) < 0.7)))), [data, overrides]);
 
   if (!data) return <Card><CardContent className="p-8 text-sm text-muted-foreground">Loading review…</CardContent></Card>;
 
@@ -113,8 +111,18 @@ function ReviewPanel({ runId }: { runId: string }) {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {data.run.captcha && (
+          <div role="status" className="flex items-center gap-2 rounded-md border px-3 py-2 text-sm">
+            {data.run.captcha.solvedBy === "unsolved"
+              ? <AlertTriangle className="h-4 w-4 text-[var(--viz-warning)]" aria-hidden />
+              : <CheckCircle2 className="h-4 w-4 text-[var(--viz-good)]" aria-hidden />}
+            <span>CAPTCHA ({String(data.run.captcha.kind).replace(/_/g, " ")}):{" "}
+              {data.run.captcha.solvedBy === "unsolved" ? "may still be unsolved — check the screenshot before approving"
+                : data.run.captcha.solvedBy === "reviewer" ? "solved by you" : `solved via ${data.run.captcha.solvedBy}`}</span>
+          </div>
+        )}
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={`/api/v1/runs/${runId}/screenshot`} alt="Screenshot of the completed form (passwords masked)" className="max-h-80 w-full rounded-md border object-contain object-top" />
+        <img src={`/api/v1/runs/${runId}/screenshot?step=${data.run.stepId}`} alt="Screenshot of the completed form (passwords masked)" className="max-h-80 w-full rounded-md border object-contain object-top" />
         <Table>
           <thead><tr><Th>Field</Th><Th>Filled with</Th><Th>Confidence</Th><Th>Why</Th><Th>Correct it</Th></tr></thead>
           <tbody>
@@ -127,7 +135,9 @@ function ReviewPanel({ runId }: { runId: string }) {
                     <div className="text-xs text-muted-foreground">{f.kind}</div></Td>
                   <Td><div className="font-mono text-xs">{f.fill?.displayValue ?? <span className="text-muted-foreground">empty</span>}</div>
                     <div className="text-xs text-muted-foreground">{f.profile_path ?? "unmapped"}</div>
-                    {f.fill?.valid === false && <div className="text-xs text-destructive">{f.fill.validationMessage ?? "Site reports this field as invalid"}</div>}</Td>
+                    {f.profile_path === "consent.terms"
+                      ? <div className="text-xs text-muted-foreground">Ticked only when you approve</div>
+                      : f.fill?.valid === false && <div className="text-xs text-destructive">{f.fill.validationMessage ?? "Site reports this field as invalid"}</div>}</Td>
                   <Td>{f.decision_id ? <Badge tone={confTone(c)}>{(c * 100).toFixed(0)}%</Badge> : "—"}<div className="mt-1 text-xs text-muted-foreground">{f.source}{f.provider ? ` · ${f.provider}` : ""}</div></Td>
                   <Td className="max-w-xs text-xs text-muted-foreground">{f.reasoning}</Td>
                   <Td className="min-w-48 space-y-1">
@@ -135,8 +145,9 @@ function ReviewPanel({ runId }: { runId: string }) {
                       value={overrides[f.id]?.value !== undefined ? "__custom" : overrides[f.id]?.profilePath ?? f.profile_path ?? ""}
                       onChange={(e) => setOverrides((o) => ({ ...o, [f.id]: e.target.value === "__custom" ? { value: "" } : { profilePath: e.target.value || null } }))}>
                       <option value="">Leave empty</option>
-                      {PROFILE_PATHS.map((p) => <option key={p} value={p}>{p}</option>)}
-                      {f.profile_path && !PROFILE_PATHS.includes(f.profile_path) && <option value={f.profile_path}>{f.profile_path}</option>}
+                      {data.slots.filter((sl) => !sl.path.startsWith("site_account.")).map((sl) => (
+                        <option key={sl.path} value={sl.path}>{sl.label}{sl.hasValue ? "" : " (empty)"}</option>))}
+                      {f.profile_path && !data.slots.some((sl) => sl.path === f.profile_path) && <option value={f.profile_path}>{f.profile_path}</option>}
                       <option value="__custom">Type a value…</option>
                     </select>
                     {overrides[f.id]?.value !== undefined && (
@@ -174,8 +185,7 @@ function LiveView({ runId }: { runId: string }) {
   const input = (event: any) => send(`/api/v1/runs/${runId}/manual`, "POST", { type: "input", event });
   const onClick = (e: React.MouseEvent<HTMLImageElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
-    const scale = (e.currentTarget.naturalWidth || 1280) / r.width;
-    input({ kind: "click", x: (e.clientX - r.left) * scale, y: (e.clientY - r.top) * scale });
+    input({ kind: "click", x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height });
   };
 
   return (

@@ -37,3 +37,14 @@ describe("heuristicMap", () => {
     expect(heuristicMap([{ id: "h", kind: "hidden", autocomplete: "email", required: false }], paths)).toEqual([]);
   });
 });
+
+import { verifyTotp } from "../src/lib/totp.js";
+describe("verifyTotp", () => {
+  // RFC 6238 Appendix B: ASCII secret "12345678901234567890", T=59s → 94287082 (last 6 digits: 287082)
+  const secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+  it("accepts the RFC test vector and rejects wrong codes", () => {
+    expect(verifyTotp(secret, "287082", 59_000)).toBe(true);
+    expect(verifyTotp(secret, "287083", 59_000)).toBe(false);
+    expect(verifyTotp(secret, "abc", 59_000)).toBe(false);
+  });
+});

@@ -1,5 +1,7 @@
 /**
  * Auth.js v5. Providers: Microsoft Entra ID (M365 tenants), Google, email+password (+TOTP).
+ * No database adapter: the API owns the users/accounts tables. OAuth identities are resolved to our
+ * user id via POST /v1/auth/oauth-upsert (server-to-server).
  * After sign-in the *server-side* jwt callback exchanges the identity for API tokens
  * (ES256 access 15 min + rotating refresh). Tokens live only in the encrypted Auth.js
  * session cookie (httpOnly, Secure, SameSite=Lax) — never in localStorage.
@@ -8,8 +10,6 @@ import NextAuth, { type DefaultSession } from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
-import PostgresAdapter from "@auth/pg-adapter";
-import { Pool } from "pg";
 import { z } from "zod";
 
 const API = process.env.API_INTERNAL_URL!;
@@ -29,17 +29,32 @@ async function exchange(userId: string) {
   return (await r.json()) as { accessToken: string; refreshToken: string; expiresIn: number };
 }
 
+async function oauthUser(provider: string, providerAccountId: string, user: { email?: string | null; name?: string | null; image?: string | null }) {
+  const r = await fetch(`${API}/v1/auth/oauth-upsert`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-internal-secret": INTERNAL },
+    body: JSON.stringify({ provider, providerAccountId, email: user.email, name: user.name, image: user.image }),
+  });
+  if (!r.ok) throw new Error(((await r.json().catch(() => ({}))) as any)?.error?.message ?? "sign-in failed");
+  return ((await r.json()) as { userId: string }).userId;
+}
+
+export const oauthEnabled = {
+  microsoft: !!(process.env.AUTH_MICROSOFT_ENTRA_ID_ID && process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER),
+  google: !!process.env.AUTH_GOOGLE_ID,
+};
+
 function claims(accessToken: string): { org: string } {
   return JSON.parse(Buffer.from(accessToken.split(".")[1]!, "base64url").toString());
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PostgresAdapter(new Pool({ connectionString: process.env.DATABASE_URL })),
   session: { strategy: "jwt", maxAge: 60 * 60 * 12 },
   pages: { signIn: "/login" },
   providers: [
-    MicrosoftEntraID({ allowDangerousEmailAccountLinking: false }),
-    Google,
+    // OAuth providers are enabled only when configured, so a missing app registration never breaks sign-in.
+    ...(oauthEnabled.microsoft ? [MicrosoftEntraID({ allowDangerousEmailAccountLinking: false })] : []),
+    ...(oauthEnabled.google ? [Google] : []),
     Credentials({
       credentials: { email: {}, password: {}, totp: {} },
       authorize: async (raw) => {
@@ -56,10 +71,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
-      if (user?.id) {
-        const t = await exchange(user.id);
-        return { ...token, uid: user.id, at: t.accessToken, rt: t.refreshToken, exp_at: Date.now() + t.expiresIn * 1000, org: claims(t.accessToken).org };
+    async jwt({ token, user, account }) {
+      if (user && account) {
+        const userId = account.type === "credentials" ? user.id! : await oauthUser(account.provider, account.providerAccountId, user);
+        const t = await exchange(userId);
+        return { ...token, uid: userId, at: t.accessToken, rt: t.refreshToken, exp_at: Date.now() + t.expiresIn * 1000, org: claims(t.accessToken).org };
       }
       if (Date.now() < (token.exp_at as number) - 60_000) return token;
       // Rotate refresh token

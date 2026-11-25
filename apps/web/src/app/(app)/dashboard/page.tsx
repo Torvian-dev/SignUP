@@ -94,6 +94,7 @@ export default async function DashboardPage() {
                 <tr key={c.provider + c.kind}><Td>{c.provider}</Td><Td>{c.kind}</Td><Td className="text-right tabular-nums">{c.attempts}</Td>
                   <Td className="text-right tabular-nums">{pct(c.success_rate_pct)}</Td><Td className="text-right tabular-nums">{(c.avg_solve_ms / 1000).toFixed(1)}s</Td>
                   <Td className="text-right tabular-nums">${Number(c.cost_per_solve_usd ?? 0).toFixed(4)}</Td></tr>))}
+                {d.captcha.length === 0 && <tr><Td colSpan={6} className="py-6 text-center text-muted-foreground">No provider solves yet. Challenges without a provider go to the reviewer's live view.</Td></tr>}
               </tbody></Table>
           </CardContent>
         </Card>
@@ -105,6 +106,7 @@ export default async function DashboardPage() {
                 <tr key={p.provider + p.category}><Td>{p.provider}</Td><Td className="text-right tabular-nums">{p.calls}</Td>
                   <Td className="text-right tabular-nums">{pct((100 * p.ok) / Math.max(1, p.calls))}</Td><Td className="text-right tabular-nums">{p.failovers}</Td>
                   <Td className="text-right tabular-nums">${Number(p.cost_usd ?? 0).toFixed(2)}</Td></tr>))}
+                {d.providerUsage.length === 0 && <tr><Td colSpan={5} className="py-6 text-center text-muted-foreground">No provider calls yet. <Link className="underline" href="/admin/api-keys">Add an AI key</Link> to enable semantic mapping.</Td></tr>}
               </tbody></Table>
           </CardContent>
         </Card>

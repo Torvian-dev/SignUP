@@ -8,6 +8,7 @@
  * Output: one decision per field with path, transform, calibrated confidence and reasoning.
  */
 import { withOrg } from "../../lib/db.js";
+import { logger } from "../../lib/logger.js";
 import { sha256 } from "../../lib/crypto.js";
 import { buildVocabulary, flattenValues } from "../profiles/profileVocabulary.js";
 import type { DecryptedProfile } from "../profiles/profileService.js";
@@ -45,7 +46,7 @@ export interface MapPageOutput {
   completionConfidence: number;
 }
 
-const MEMORY_MIN_POSTERIOR = 0.85;
+const MEMORY_MIN_POSTERIOR = 0.75; // Beta(3,1) = two human confirmations, no failures
 const MEMORY_MIN_N = 2;
 
 export async function mapPage(input: MapPageInput): Promise<MapPageOutput> {
@@ -74,10 +75,29 @@ export async function mapPage(input: MapPageInput): Promise<MapPageOutput> {
   let pageKind: MappingResult["pageKind"] = "other";
   let submitLocatorHint: string | null = null;
   if (open.length > 0 || decided.size === 0) {
-    const hints = await semanticHints(orgId, open);
-    const routed = await routeMapping(orgId, runId,
-      mappingSystemPrompt(slots),
-      mappingUserPrompt(input.url, input.pageTitle, open.length ? open : fillable, hints));
+    const hints = await semanticHints(orgId, open).catch(() => "");
+    let routed: Awaited<ReturnType<typeof routeMapping>>;
+    try {
+      routed = await routeMapping(orgId, runId,
+        mappingSystemPrompt(slots),
+        mappingUserPrompt(input.url, input.pageTitle, open.length ? open : fillable, hints));
+    } catch (err) {
+      // Degraded mode: no AI configured or every provider failed. Keep what memory + heuristics found
+      // and hand the remaining fields to the reviewer instead of failing the whole run.
+      const why = (err as Error).message.slice(0, 160);
+      logger.warn({ runId, err: why }, "AI mapping unavailable — degraded to memory + heuristics");
+      const weakMemory = new Map(memory.filter((m) => m.posterior > 0.5 && paths.has(m.profilePath)).map((m) => [m.fieldId, m]));
+      for (const f of open) {
+        const m = weakMemory.get(f.id);
+        decided.set(f.id, m
+          ? { fieldId: f.id, profilePath: m.profilePath, transform: m.transform, confidence: Number(m.posterior.toFixed(3)),
+              reasoning: `Confirmed ${m.n}× on ${domain} before (AI unavailable, using memory)`, source: "memory" }
+          : { fieldId: f.id, profilePath: null, transform: null, confidence: 0,
+              reasoning: /no AI provider/.test(why) ? "No AI key set up — choose the right field" : "AI unavailable — choose the right field",
+              source: "heuristic" });
+      }
+      return persistAndReturn(input, decided, "other", null);
+    }
     pageKind = routed.result.pageKind;
     submitLocatorHint = routed.result.submitLocatorHint;
     await withOrg(orgId, async (tx) => {
@@ -101,6 +121,12 @@ export async function mapPage(input: MapPageInput): Promise<MapPageOutput> {
     });
   }
 
+  return persistAndReturn(input, decided, pageKind, submitLocatorHint);
+}
+
+async function persistAndReturn(input: MapPageInput, decided: Map<string, Decision>,
+                                pageKind: MappingResult["pageKind"], submitLocatorHint: string | null): Promise<MapPageOutput> {
+  const { orgId, runId, profile } = input;
   // Persist decisions (value hash only — never the PII value)
   const values = flattenValues(profile);
   const decisions = [...decided.values()];

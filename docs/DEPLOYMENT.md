@@ -41,7 +41,7 @@ flowchart TB
 | Image | File | Base | Notes |
 |---|---|---|---|
 | `formagent-api` | `infra/docker/api.Dockerfile` | distroless nodejs22, nonroot | No browser; ~120 MB |
-| `formagent-worker` | `infra/docker/worker.Dockerfile` | `mcr.microsoft.com/playwright:v1.49.1-noble` | Version **must equal** the `playwright` npm pin; runs as `pwuser`; needs `/dev/shm` ≥ 1 GB |
+| `formagent-worker` | `infra/docker/worker.Dockerfile` | `mcr.microsoft.com/playwright:v1.63.0-noble` | Version **must equal** the `playwright` npm pin; runs as `pwuser`; needs `/dev/shm` ≥ 1 GB |
 | `formagent-web` | `infra/docker/web.Dockerfile` | distroless, Next.js `standalone` output | |
 | `formagent-navigator` | `infra/docker/navigator.Dockerfile` | python:3.12-slim | browser-use pinned |
 

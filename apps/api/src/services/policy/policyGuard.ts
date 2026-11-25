@@ -8,6 +8,7 @@
 import { isIP } from "node:net";
 import { lookup } from "node:dns/promises";
 import { parse as parseDomain } from "tldts";
+import { env } from "../../config/env.js";
 import { withOrg } from "../../lib/db.js";
 import { policyViolation, badRequest } from "../../lib/errors.js";
 
@@ -20,7 +21,7 @@ export async function assertPublicUrl(raw: string): Promise<URL> {
   const host = url.hostname;
   const addrs = isIP(host) ? [host] : (await lookup(host, { all: true }).catch(() => [])).map((a) => a.address);
   if (!addrs.length) throw badRequest("host does not resolve");
-  if (addrs.some((a) => PRIVATE.some((r) => r.test(a)))) throw policyViolation("private / internal addresses cannot be automated");
+  if (env.ALLOW_PRIVATE_TARGETS !== "true" && addrs.some((a) => PRIVATE.some((r) => r.test(a)))) throw policyViolation("private / internal addresses cannot be automated");
   return url;
 }
 

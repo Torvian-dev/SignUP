@@ -3,7 +3,7 @@
  *
  * Three feedback loops, all driven by the review screen:
  *  1. Domain memory  — exact (domain, field_key) → profile_path with a Beta(α,β) success posterior.
- *                      After ≥2 confirmations at ≥0.85 posterior, the LLM is skipped for that field.
+ *                      After ≥2 confirmations at ≥0.75 posterior, the LLM is skipped for that field.
  *  2. Semantic memory — embeddings of normalised field signatures. Nearest confirmed neighbours are
  *                      injected into the LLM prompt as few-shot evidence for *new* sites.
  *  3. Calibration    — per-org reliability buckets map raw model confidence → observed accuracy, so
@@ -105,8 +105,11 @@ export async function recordOutcome(orgId: string, userId: string, args: {
       await tx.query("UPDATE automation_runs SET fields_corrected = fields_corrected + 1 WHERE id=$1", [d.run_id]);
     }
 
-    // Calibration: was the model's proposal right?
+    // Only a human verdict (accepted / corrected / rejected) is evidence about the mapping.
+    // "skipped" (not filled, e.g. terms left for approval) and "validation_failed" (a site/format issue) are not.
+    const judged = ["accepted", "corrected", "rejected"].includes(args.outcome);
     const correct = args.outcome === "accepted";
+    if (!judged) return;
     const bucket = Math.min(0.95, Math.max(0.5, Math.floor(Number(d.confidence) * 20) / 20));
     await tx.query(
       `INSERT INTO confidence_calibration (org_id, bucket, predictions, correct) VALUES ($1,$2,1,$3)

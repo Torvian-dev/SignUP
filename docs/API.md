@@ -47,7 +47,7 @@ Rate limits: `/auth/*` allows 20/min per IP. Everything else allows 300/min per 
 | GET | `/runs/:id/review` | run:review | `{run:{…,submitButton}, fields:[{id,kind,label,required,options,decision_id,profile_path,transform,confidence,reasoning,source,provider,fill:{status,valid,validationMessage,displayValue}}]}` |
 | GET | `/runs/:id/screenshot` | run:review | PNG of the filled form, passwords masked, `no-store` |
 | POST | `/runs/:id/approve` | run:approve | `{overrides:[{fieldId, profilePath?|null, transform?, value?}]}` → 202. 409 unless `awaiting_review` |
-| POST | `/runs/:id/manual` | run:review | `{type:"manual_done"}` or `{type:"input", event:{kind:"click",x,y}/{kind:"type",text}/{kind:"key",key}/{kind:"scroll",dy}}` |
+| POST | `/runs/:id/manual` | run:review | `{type:"manual_done"}` or `{type:"input", event:{kind:"click",x,y} / {kind:"type",text} / {kind:"key",key} / {kind:"scroll",dy}}`. Click `x`,`y` are fractions (0–1) of the viewport |
 | POST | `/runs/:id/cancel` | run:cancel | → 202 |
 | POST | `/runs/:id/resume` | run:create | Only from `paused`/`failed`. Re-queues at priority 1 from the checkpoint |
 

@@ -73,7 +73,14 @@ export async function fillFields(ctx: FillContext, decisions: Decision[]): Promi
     else raw = ctx.values[d.profilePath];
     if (raw === undefined) { results.push({ fieldId: d.fieldId, decisionId: d.decisionId, status: "skipped_no_value", valid: !field.required }); continue; }
 
-    const value = applyTransform(raw, d.transform, { countryCode: ctx.countryCode });
+    // No explicit transform but an ISO date going into a text field with a format placeholder
+    // (e.g. "DD/MM/YYYY") → format it the way the site asks.
+    let transform = d.transform;
+    const ph = field.placeholder?.trim().toUpperCase();
+    if (!transform && field.kind !== "date" && /^\d{4}-\d{2}-\d{2}$/.test(raw) && ph && /^(DD|MM|YYYY)[/.-](DD|MM)[/.-](YYYY|DD)$/.test(ph)) {
+      transform = `date:${ph}`;
+    }
+    const value = applyTransform(raw, transform, { countryCode: ctx.countryCode });
     const root = frameFor(ctx.page, field.framePath);
     const loc = root.locator(field.locator).first();
 

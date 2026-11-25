@@ -11,7 +11,7 @@ export const screenChannel = (runId: string) => `run:${runId}:screen`;
 
 export interface LiveView { stop(): Promise<void>; input(ev: InputEvent): Promise<void> }
 export type InputEvent =
-  | { kind: "click"; x: number; y: number }
+  | { kind: "click"; x: number; y: number }   // fractions of the viewport (0–1), independent of frame scaling
   | { kind: "type"; text: string }
   | { kind: "key"; key: string }
   | { kind: "scroll"; dy: number };
@@ -28,16 +28,30 @@ export async function startLiveView(page: Page, runId: string): Promise<LiveView
   });
   await cdp.send("Page.startScreencast", { format: "jpeg", quality: 60, maxWidth: 1280, maxHeight: 800, everyNthFrame: 2 });
 
+  // Chromium only emits screencast frames when the page repaints, so a static page would show nothing.
+  // Push a screenshot immediately, after every input, and whenever the stream has been quiet for 1.5 s.
+  const snapshot = async () => {
+    const jpg = await page.screenshot({ type: "jpeg", quality: 60 }).catch(() => null);
+    if (jpg) { last = Date.now(); await redis.publish(screenChannel(runId), jpg.toString("base64")); }
+  };
+  await snapshot();
+  const keepFresh = setInterval(() => { if (Date.now() - last > 1500) void snapshot(); }, 1500);
+
   return {
     async stop() {
+      clearInterval(keepFresh);
       await cdp.send("Page.stopScreencast").catch(() => undefined);
       await cdp.detach().catch(() => undefined);
     },
     async input(ev) {
-      if (ev.kind === "click") await page.mouse.click(ev.x, ev.y);
+      if (ev.kind === "click") {
+        const vp = page.viewportSize() ?? { width: 1440, height: 900 };
+        await page.mouse.click(ev.x * vp.width, ev.y * vp.height);
+      }
       else if (ev.kind === "type") await page.keyboard.type(ev.text, { delay: 60 });
       else if (ev.kind === "key") await page.keyboard.press(ev.key);
       else if (ev.kind === "scroll") await page.mouse.wheel(0, ev.dy);
+      setTimeout(() => void snapshot(), 300);
     },
   };
 }

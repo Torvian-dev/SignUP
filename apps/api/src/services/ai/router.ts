@@ -42,7 +42,7 @@ export interface RoutedMapping { result: MappingResult; usage: LlmUsage; provide
 
 export async function routeMapping(orgId: string, runId: string, system: string, user: string): Promise<RoutedMapping> {
   const creds = await chain(orgId, "ai");
-  if (creds.length === 0) throw new Error("no AI provider configured — add one under Admin → API Keys");
+  if (creds.length === 0) throw new Error("no AI provider configured — add one under Admin → API keys");
   let firstFailed: string | undefined;
   const errors: string[] = [];
 

@@ -1,6 +1,6 @@
 # Local development stack:  docker compose up --build
+# First time:  ./scripts/dev-secrets.sh > .env && docker compose up -d postgres && docker compose run --rm migrate
 # Then: http://localhost:3000  (API on :4000)
-# Generate dev secrets first:  ./scripts/dev-secrets.sh > .env
 services:
   postgres:
     image: pgvector/pgvector:pg16
@@ -11,8 +11,17 @@ services:
     ports: ["5432:5432"]
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./db/migrations:/docker-entrypoint-initdb.d:ro
     healthcheck: { test: ["CMD-SHELL", "pg_isready -U formagent"], interval: 5s, retries: 10 }
+
+  # One-shot: applies db/migrations (tracked in schema_migrations) + seed.  docker compose run --rm migrate
+  migrate:
+    image: postgres:16
+    profiles: ["tools"]
+    environment:
+      DATABASE_URL: postgres://formagent:formagent@postgres:5432/formagent
+    volumes: ["./db:/db:ro"]
+    entrypoint: ["sh", "-c", "sh /db/migrate.sh /db/migrations && psql \"$$DATABASE_URL\" -q -f /db/seed.sql"]
+    depends_on: { postgres: { condition: service_healthy } }
 
   redis:
     image: redis:7.4-alpine

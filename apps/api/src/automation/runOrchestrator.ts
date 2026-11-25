@@ -43,8 +43,15 @@ type Control =
   | { type: "cancel" } | { type: "manual_done" } | { type: "input"; event: any };
 
 async function nextControl(runId: string, timeoutMs: number): Promise<Control | null> {
-  const r = await redis.blpop(controlKey(runId), Math.ceil(timeoutMs / 1000));
-  return r ? (JSON.parse(r[1]) as Control) : null;
+  // BLPOP blocks its connection. It must NOT run on the shared client, or live-view frame publishes and
+  // BullMQ lock renewals queue behind it until a control message arrives. Use a dedicated connection.
+  const conn = redis.duplicate();
+  try {
+    const r = await conn.blpop(controlKey(runId), Math.max(1, Math.ceil(timeoutMs / 1000)));
+    return r ? (JSON.parse(r[1]) as Control) : null;
+  } finally {
+    conn.disconnect();
+  }
 }
 
 export class CancelledError extends Error {}
@@ -109,7 +116,8 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
           placeholder: f.placeholder, autocomplete: f.autocomplete, ariaLabel: f.ariaLabel, nearbyText: f.nearbyText,
           required: f.required, options: f.options?.slice(0, 80), section: f.section })),
       });
-      await emit(orgId, runId, "mapping", `Mapped ${mapped.decisions.filter((d) => d.profilePath).length}/${fields.length} fields`,
+      const visibleCount = fields.filter((f) => f.visible && !f.honeypot && f.kind !== "hidden").length;
+      await emit(orgId, runId, "mapping", `Mapped ${mapped.decisions.filter((d) => d.profilePath).length}/${visibleCount} fields`,
         { pageKind: mapped.pageKind, confidence: mapped.completionConfidence });
 
       await setStatus(orgId, runId, "filling");
@@ -118,15 +126,15 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
         consent: { terms: false, marketing: false },  // terms are ticked only on explicit approval
         minConfidence: 0.5,
       }, mapped.decisions);
-      if (mapped.pageKind === "signup" && results.some((r) => r.status === "filled" && mapped.decisions.find((d) => d.fieldId === r.fieldId)?.profilePath === "generated.password")) {
+      if ((mapped.pageKind === "signup" || analysis.signals.looksLikeSignup) && results.some((r) => r.status === "filled" && mapped.decisions.find((d) => d.fieldId === r.fieldId)?.profilePath === "generated.password")) {
         createdAccount = true;
       }
       await withOrg(orgId, (tx) => tx.query(
         `UPDATE automation_runs SET fields_total = fields_total + $2, fields_filled = fields_filled + $3, completion_confidence=$4 WHERE id=$1`,
-        [runId, fields.length, results.filter((r) => r.status === "filled").length, mapped.completionConfidence]));
+        [runId, visibleCount, results.filter((r) => r.status === "filled").length, mapped.completionConfidence]));
 
       // CAPTCHA
-      await handleCaptcha(orgId, runId, domain, session, profile.proxy ?? undefined);
+      const captcha = await handleCaptcha(orgId, runId, domain, session, profile.proxy ?? undefined);
 
       // Decide: auto-advance or stop for review
       const primary = pickPrimaryButton(analysis, mapped.submitLocatorHint);
@@ -148,7 +156,7 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
       // ---- Review gate ----
       await screenshot(orgId, runId, stepId, session);
       await withOrg(orgId, (tx) => tx.query("UPDATE automation_runs SET checkpoint=$2 WHERE id=$1",
-        [runId, { url: page.url(), step, review: { stepId, results, submit: primary } }]));
+        [runId, { url: page.url(), step, review: { stepId, results, submit: primary, captcha } }]));
       await setStatus(orgId, runId, "awaiting_review");
       await emit(orgId, runId, "review", "Ready for review", { stepId, completionConfidence: mapped.completionConfidence });
 
@@ -219,9 +227,11 @@ async function persistStep(orgId: string, runId: string, step: number, a: PageAn
   });
 }
 
-async function handleCaptcha(orgId: string, runId: string, domain: string, s: BrowserSession, proxy?: { type: string; host: string; port: number; username?: string; password?: string }) {
+type CaptchaStatus = { kind: string; solvedBy: string } | null;
+
+async function handleCaptcha(orgId: string, runId: string, domain: string, s: BrowserSession, proxy?: { type: string; host: string; port: number; username?: string; password?: string }): Promise<CaptchaStatus> {
   const found = await detectCaptcha(s.page);
-  if (!found) return;
+  if (!found) return null;
   await setStatus(orgId, runId, "solving_captcha");
   await emit(orgId, runId, "captcha", `Detected ${found.kind}`);
   const challenge = await toChallenge(s.page, found, s.userAgent, proxy);
@@ -231,9 +241,13 @@ async function handleCaptcha(orgId: string, runId: string, domain: string, s: Br
   if (outcome.status === "solved") {
     await injectSolution(s.page, found, outcome.solution.token, outcome.solution.text);
     await emit(orgId, runId, "captcha", `Solved via ${outcome.provider}`);
-  } else {
-    await escalateManual(orgId, runId, s, `CAPTCHA needs a person: ${outcome.reason}`);
+    return { kind: found.kind, solvedBy: outcome.provider };
   }
+  await escalateManual(orgId, runId, s, `CAPTCHA needs a person: ${outcome.reason}`);
+  const stillThere = await detectCaptcha(s.page);
+  await emit(orgId, runId, "captcha", stillThere ? "CAPTCHA still looks unsolved — check it in the review screenshot" : "Solved by reviewer",
+    undefined, stillThere ? "warn" : "info");
+  return { kind: found.kind, solvedBy: stillThere ? "unsolved" : "reviewer" };
 }
 
 async function escalateManual(orgId: string, runId: string, s: BrowserSession, reason: string) {
@@ -265,7 +279,9 @@ async function applyOverridesAndLearn(orgId: string, runId: string, s: BrowserSe
     if (!d.decisionId) continue;
     if (!o) {
       const r = results.find((x) => x.fieldId === d.fieldId);
-      const outcome = r?.status === "filled" ? (r.valid ? "accepted" : "validation_failed") : "skipped";
+      // Approving the page is acceptance of the terms mapping (it is ticked right after approval).
+      const outcome = d.profilePath === "consent.terms" ? "accepted"
+        : r?.status === "filled" ? (r.valid ? "accepted" : "validation_failed") : "skipped";
       await recordOutcome(orgId, ctrl.userId, { decisionId: d.decisionId, outcome, finalPath: d.profilePath, finalTransform: d.transform });
       continue;
     }
@@ -288,7 +304,7 @@ async function applyOverridesAndLearn(orgId: string, runId: string, s: BrowserSe
 }
 
 async function screenshot(orgId: string, runId: string, stepId: string, s: BrowserSession) {
-  const png = await s.page.screenshot({ fullPage: true, mask: [s.page.locator("input[type=password]")] });
+  const png = await s.page.screenshot({ fullPage: true, mask: [s.page.locator("input[type=password]")], maskColor: "#d9dde3" });
   const key = await putEncrypted(orgId, BLOB.artifacts, `${runId}/${stepId}.png.enc`, png);
   await withOrg(orgId, (tx) => tx.query("UPDATE run_steps SET screenshot_path=$2, finished_at=now() WHERE id=$1", [stepId, key]));
 }

@@ -14,7 +14,7 @@ const fmtDay = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "nu
 export function RunsChart({ data }: { data: { day: string; succeeded: number; failed: number }[] }) {
   return (
     <ResponsiveContainer width="100%" height={240}>
-      <BarChart data={data.map((d) => ({ ...d, succeeded: Number(d.succeeded), failed: Number(d.failed) }))} barCategoryGap={4}>
+      <BarChart data={data.map((d) => ({ ...d, succeeded: Number(d.succeeded), failed: Number(d.failed) }))} barCategoryGap={4} maxBarSize={48}>
         {grid}
         <XAxis dataKey="day" tickFormatter={fmtDay} {...axis} />
         <YAxis allowDecimals={false} width={28} {...axis} />

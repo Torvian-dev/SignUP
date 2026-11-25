@@ -171,7 +171,7 @@ flowchart TD
 
 ```mermaid
 flowchart LR
-  F[detected fields] --> M1{domain memory<br/>posterior ≥ .85, n ≥ 2}
+  F[detected fields] --> M1{domain memory<br/>posterior ≥ .75, n ≥ 2}
   M1 -- hit --> D[decision]
   M1 -- miss --> H{autocomplete / type=email<br/>heuristics}
   H -- hit --> D
@@ -198,7 +198,7 @@ Every field on an approved page produces a labelled example: *accepted*, *correc
 
 | Loop | Store | Update rule | Effect next run |
 |---|---|---|---|
-| **Domain memory** | `mapping_memory (scope=domain)` keyed by `field_key` | Beta(α, β): success → α+1; wrong proposal → β+1 | Posterior ≥ 0.85 with n ≥ 2 → answered from memory (no LLM, near-zero latency) |
+| **Domain memory** | `mapping_memory (scope=domain)` keyed by `field_key` | Beta(α, β): success → α+1; wrong proposal → β+1 | Posterior ≥ 0.75 (two confirmations, no failures) with n ≥ 2 → answered from memory (no LLM, near-zero latency) |
 | **Semantic memory** | `mapping_memory.embedding` (pgvector, HNSW) | Confirmed mapping is embedded (text-embedding-3-small when OpenAI is configured) | kNN neighbours injected as few-shot evidence for **new** sites |
 | **Calibration** | `confidence_calibration` (0.50–0.95 buckets) | +1 prediction, +1 correct if accepted | Raw confidence blended toward observed accuracy once a bucket has 20+ samples |
 | **Site playbooks** | `site_playbooks` | Step order and advance buttons per domain/flow | Faster multi-step navigation (Phase 2 consumer) |

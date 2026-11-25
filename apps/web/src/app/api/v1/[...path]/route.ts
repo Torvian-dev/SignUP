@@ -22,9 +22,16 @@ async function forward(req: NextRequest, { params }: { params: Promise<{ path: s
     // @ts-expect-error Node fetch streaming option
     duplex: "half",
   });
+  const type = upstream.headers.get("content-type") ?? "application/json";
+  const isStream = type.startsWith("text/event-stream");
   return new Response(upstream.body, {
     status: upstream.status,
-    headers: { "content-type": upstream.headers.get("content-type") ?? "application/json", "cache-control": "no-store" },
+    headers: {
+      "content-type": type,
+      // no-transform stops response compression from buffering Server-Sent Events (live view, activity).
+      "cache-control": isStream ? "no-cache, no-transform" : "no-store",
+      ...(isStream ? { "x-accel-buffering": "no", connection: "keep-alive" } : {}),
+    },
   });
 }
 

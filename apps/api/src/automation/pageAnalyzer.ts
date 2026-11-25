@@ -10,6 +10,7 @@
  */
 import { createHash } from "node:crypto";
 import type { Frame, Page } from "playwright";
+import { logger } from "../lib/logger.js";
 
 export interface RawField {
   locator: string;          // CSS path usable with frame.locator()
@@ -67,7 +68,10 @@ function extractInFrame() {
   const isVisible = (el: Element) => {
     const r = (el as HTMLElement).getBoundingClientRect();
     const s = getComputedStyle(el as HTMLElement);
-    return r.width > 1 && r.height > 1 && s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0.05;
+    // Off-screen positioning (left:-9999px) and clipping are common honeypot techniques → not visible.
+    const offscreen = r.right <= 0 || r.bottom <= 0 || r.left >= document.documentElement.scrollWidth + 50;
+    const clipped = s.clipPath === "inset(50%)" || (s.clip && s.clip !== "auto" && r.width <= 1);
+    return r.width > 1 && r.height > 1 && !offscreen && !clipped && s.visibility !== "hidden" && s.display !== "none" && Number(s.opacity) > 0.05;
   };
 
   const labelFor = (el: HTMLElement): string | undefined => {
@@ -108,7 +112,7 @@ function extractInFrame() {
     root.querySelectorAll<HTMLElement>("input, select, textarea, [role=combobox], [contenteditable=true]").forEach((el) => {
       const kind = kindOf(el);
       if (["submit", "button", "reset", "image"].includes((el.getAttribute("type") ?? "").toLowerCase())) return;
-      const visible = kind === "hidden" ? false : isVisible(el);
+      const visible = kind === "hidden" ? false : isVisible(el) && !el.closest("[aria-hidden=true]");
       const name = el.getAttribute("name") ?? undefined;
       // Honeypots: invisible but not type=hidden, often with tempting names.
       const honeypot = !visible && kind !== "hidden" && (el.getAttribute("tabindex") === "-1" || /website|url|honey|hp_|fax/i.test(name ?? ""));
@@ -178,7 +182,8 @@ export async function analysePage(page: Page): Promise<PageAnalysis> {
     const host = (() => { try { return new URL(frame.url()).hostname; } catch { return ""; } })();
     if (/google\.com\/recaptcha|hcaptcha\.com|challenges\.cloudflare\.com/.test(frame.url())) continue; // CAPTCHA frames handled separately
     let r: ReturnType<typeof extractInFrame>;
-    try { r = (await frame.evaluate(extractInFrame)) as ReturnType<typeof extractInFrame>; } catch { continue; }
+    try { r = (await frame.evaluate(extractInFrame)) as ReturnType<typeof extractInFrame>; }
+    catch (err) { logger.warn({ frameUrl: frame.url(), err: (err as Error).message.slice(0, 200) }, "frame analysis failed"); continue; }
     const fp = await framePath(frame);
     formCount += r.formCount;
     stepIndicator ??= r.stepIndicator;
