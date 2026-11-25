@@ -39,11 +39,11 @@ export function heuristicMap(fields: FieldDescriptor[], availablePaths: Set<stri
         fieldId: f.id,
         profilePath: path,
         transform: path.endsWith(".country") && f.kind === "select" ? "country:alpha2" : null,
-        confidence: 0.97,
-        reasoning: `autocomplete="${token}" is a standard token for ${path}`,
+        confidence: 0.99,
+        reasoning: `the field is tagged autocomplete="${token}", a standard marker for ${path}`,
       });
     } else if (f.kind === "email" && availablePaths.has("personal.email")) {
-      hits.push({ fieldId: f.id, profilePath: "personal.email", transform: null, confidence: 0.9, reasoning: "input type=email" });
+      hits.push({ fieldId: f.id, profilePath: "personal.email", transform: null, confidence: 0.98, reasoning: "the field is an email input (type=email)" });
     }
   }
   return hits;

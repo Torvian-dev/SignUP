@@ -47,7 +47,7 @@ export interface MapPageOutput {
 }
 
 const MEMORY_MIN_POSTERIOR = 0.75; // Beta(3,1) = two human confirmations, no failures
-const MEMORY_MIN_N = 2;
+const MEMORY_MIN_N = 1;  // one human confirmation is enough to reuse a mapping
 
 export async function mapPage(input: MapPageInput): Promise<MapPageOutput> {
   const { orgId, runId, domain, profile } = input;
