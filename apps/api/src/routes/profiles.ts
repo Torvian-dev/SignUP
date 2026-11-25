@@ -7,6 +7,8 @@ import { auth } from "../middleware/auth.js";
 import { ah, parse } from "../middleware/http.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { createProfile, getDecryptedProfile, listProfiles, ProfileInput, updateProfile } from "../services/profiles/profileService.js";
+import { CSV_TEMPLATE_HEADERS, importProfiles } from "../services/profiles/importProfiles.js";
+import { parseCsv } from "../lib/csv.js";
 
 export const profilesRouter = Router();
 
@@ -21,6 +23,25 @@ profilesRouter.post("/", requirePermission("profile:write"), ah(async (req, res)
   await audit(auditFromReq(req, { action: "profile.create", targetType: "profile", targetId: id,
     metadata: { fields: Object.keys(input).filter((k) => (input as any)[k] !== undefined), customFields: input.customFields.length, proxy: !!input.proxy } }));
   res.status(201).json({ id });
+}));
+
+profilesRouter.get("/import/template", requirePermission("profile:read"), (_req, res) => {
+  const example = ["Sample Person","Sample","Person","sample@example.com","07700900000","1 High Street","","Leeds","West Yorkshire","LS1 1AA","GB","http","gb.proxy.example","8080","user","pass","1990-03-07","Sample Ltd"];
+  res.set("content-type", "text/csv").set("content-disposition", "attachment; filename=profiles-template.csv")
+     .send(CSV_TEMPLATE_HEADERS.map((h) => /[",\n]/.test(h) ? `"${h}"` : h).join(",") + "\n" + example.map((v) => /[",\n]/.test(v) ? `"${v}"` : v).join(",") + "\n");
+});
+
+/** Bulk import profiles from CSV text. Body: { csv: string }. Each row is validated independently. */
+profilesRouter.post("/import", requirePermission("profile:write"), ah(async (req, res) => {
+  const a = auth(req);
+  const { csv } = parse(z.object({ csv: z.string().min(1).max(2_000_000) }), req.body);
+  const rows = parseCsv(csv);
+  if (rows.length === 0) throw (await import("../lib/errors.js")).badRequest("no data rows found in the CSV");
+  if (rows.length > 1000) throw (await import("../lib/errors.js")).badRequest("import is limited to 1000 profiles at a time");
+  const result = await importProfiles(a.orgId, a.userId, rows);
+  await audit(auditFromReq(req, { action: "profile.create", targetType: "profile_import",
+    metadata: { created: result.created, failed: result.failed.length } }));
+  res.status(result.created ? 201 : 400).json(result);
 }));
 
 /** Full decrypted profile — explicit "reveal" permission + audit, because it returns PII. */

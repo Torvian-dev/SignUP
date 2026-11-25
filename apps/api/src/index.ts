@@ -24,7 +24,7 @@ app.disable("x-powered-by");
 app.use(helmet({ contentSecurityPolicy: { directives: { defaultSrc: ["'none'"], frameAncestors: ["'none'"] } } }));
 app.use(cors({ origin: env.PUBLIC_WEB_ORIGIN, credentials: true, maxAge: 600 }));
 app.use(compression({ filter: (req, res) => !req.path.endsWith("/events") && compression.filter(req, res) }));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "4mb" }));
 app.use(pinoHttp({ logger, autoLogging: { ignore: (req) => req.url === "/healthz" } }));
 
 const limiter = (windowMs: number, limit: number, prefix: string) =>

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Globe } from "lucide-react";
 import { api } from "@/lib/api";
 import { Badge, Card, CardContent, Table, Td, Th } from "@/components/ui";
+import { ImportCsv } from "./ImportCsv";
 
 interface ProfileRow { id: string; label: string; isDefault: boolean; displayName: string; email?: string; customFieldCount: number; proxy: { host: string; health: string } | null; updatedAt: string }
 
@@ -11,7 +12,7 @@ export default async function ProfilesPage() {
     <div className="space-y-6">
       <div className="flex items-end justify-between">
         <div><h1 className="text-2xl font-semibold">Profiles</h1><p className="text-sm text-muted-foreground">Enter your details once; every automation reuses them. One proxy per profile.</p></div>
-        <Link href="/profiles/new" className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground">New profile</Link>
+        <div className="flex gap-2"><ImportCsv /><Link href="/profiles/new" className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground">New profile</Link></div>
       </div>
       <Card><CardContent className="p-0">
         <Table>

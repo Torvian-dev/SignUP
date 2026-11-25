@@ -68,3 +68,19 @@ describe("extractCode", () => {
     expect(extractCode("Order 100043 confirmed. Your security code is 771290.")).toBe("771290");
   });
 });
+
+import { parseCsv } from "../src/lib/csv.js";
+describe("parseCsv", () => {
+  it("parses headers, quoted fields, embedded commas and newlines", () => {
+    const csv = 'label,firstName,note\n"Smith, John",John,"line1\nline2"\nJane Doe,Jane,plain\n';
+    const rows = parseCsv(csv);
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual({ label: "Smith, John", firstName: "John", note: "line1\nline2" });
+    expect(rows[1]!.label).toBe("Jane Doe");
+  });
+  it("handles escaped quotes and a trailing row without newline", () => {
+    const rows = parseCsv('a,b\n"he said ""hi""",x');
+    expect(rows[0]).toEqual({ a: 'he said "hi"', b: "x" });
+  });
+  it("returns [] for empty input", () => { expect(parseCsv("")).toEqual([]); expect(parseCsv("\n\n")).toEqual([]); });
+});
