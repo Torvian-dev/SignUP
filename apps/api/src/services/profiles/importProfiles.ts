@@ -8,6 +8,7 @@
  */
 import { ZodError } from "zod";
 import { createProfile, ProfileInput } from "./profileService.js";
+import { parseProxyString } from "../../lib/proxy.js";
 
 const COUNTRY: Record<string, string> = {
   "united kingdom": "GB", uk: "GB", "great britain": "GB", england: "GB", scotland: "GB", wales: "GB",
@@ -34,7 +35,18 @@ export function rowToProfileInput(raw: Record<string, string>): ProfileInput {
     : COUNTRY[countryRaw.toLowerCase()] ?? (countryRaw ? countryRaw.toUpperCase().slice(0, 2) : "GB");
   const hasAddress = ["addressline1", "city", "postcode", "region"].some((k) => get(k));
 
+  // Prefer a single "proxy" column in ip:port:user:pass (scraper/manager export) over separate columns.
+  const proxyStr = get("proxy");
   const proxyHost = get("proxyhost");
+  let proxy: ProfileInput["proxy"] = null;
+  if (proxyStr) {
+    const parsed = parseProxyString(proxyStr);
+    if (!parsed) throw new Error(`proxy: cannot parse "${proxyStr}" — use ip:port or ip:port:user:pass`);
+    proxy = { ...parsed, type: (get("proxytype")?.toLowerCase() as any) || parsed.type };
+  } else if (proxyHost) {
+    proxy = { type: (get("proxytype") ?? "http").toLowerCase() as any, host: proxyHost,
+              port: Number(get("proxyport") ?? 8080), username: get("proxyusername"), password: get("proxypassword") };
+  }
   const customFields = Object.keys(raw)
     .filter((h) => h.toLowerCase().startsWith("custom:"))
     .map((h) => ({ key: slug(h.slice(h.indexOf(":") + 1)), label: h.slice(h.indexOf(":") + 1).trim(),
@@ -48,10 +60,7 @@ export function rowToProfileInput(raw: Record<string, string>): ProfileInput {
       kind: "primary", line1: get("addressline1"), line2: get("addressline2"), city: get("city"),
       region: get("region"), postcode: get("postcode"), countryCode,
     }] : [],
-    proxy: proxyHost ? {
-      type: (get("proxytype") ?? "http").toLowerCase(), host: proxyHost,
-      port: Number(get("proxyport") ?? 8080), username: get("proxyusername"), password: get("proxypassword"),
-    } : null,
+    proxy,
     customFields,
   });
 }
@@ -81,9 +90,10 @@ export async function importProfiles(orgId: string, userId: string, rows: Record
   return result;
 }
 
+// Two ways to give a proxy: a single "proxy" column (ip:port:user:pass), OR the separate columns.
 export const CSV_TEMPLATE_HEADERS = [
   "label", "firstName", "lastName", "email", "phone",
   "addressLine1", "addressLine2", "city", "region", "postcode", "country",
-  "proxyType", "proxyHost", "proxyPort", "proxyUsername", "proxyPassword",
+  "proxy",
   "custom:Date of Birth", "custom:Business Name",
 ];

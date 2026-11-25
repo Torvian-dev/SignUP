@@ -84,3 +84,21 @@ describe("parseCsv", () => {
   });
   it("returns [] for empty input", () => { expect(parseCsv("")).toEqual([]); expect(parseCsv("\n\n")).toEqual([]); });
 });
+
+import { parseProxyString } from "../src/lib/proxy.js";
+describe("parseProxyString", () => {
+  it("parses the common list formats", () => {
+    expect(parseProxyString("1.2.3.4:8080")).toEqual({ type: "http", host: "1.2.3.4", port: 8080 });
+    expect(parseProxyString("1.2.3.4:8080:bob:secret")).toEqual({ type: "http", host: "1.2.3.4", port: 8080, username: "bob", password: "secret" });
+    expect(parseProxyString("gb.proxy.example:9000:user1:p:a:ss")).toEqual({ type: "http", host: "gb.proxy.example", port: 9000, username: "user1", password: "p:a:ss" });
+    expect(parseProxyString("bob:secret@1.2.3.4:8080")).toEqual({ type: "http", host: "1.2.3.4", port: 8080, username: "bob", password: "secret" });
+    expect(parseProxyString("socks5://user:pass@10.0.0.1:1080")).toEqual({ type: "socks5", host: "10.0.0.1", port: 1080, username: "user", password: "pass" });
+    expect(parseProxyString("https://proxy.example:443")).toEqual({ type: "https", host: "proxy.example", port: 443 });
+  });
+  it("rejects malformed proxies", () => {
+    expect(parseProxyString("")).toBeNull();
+    expect(parseProxyString("justhost")).toBeNull();
+    expect(parseProxyString("1.2.3.4:notaport")).toBeNull();
+    expect(parseProxyString("1.2.3.4:99999")).toBeNull();
+  });
+});

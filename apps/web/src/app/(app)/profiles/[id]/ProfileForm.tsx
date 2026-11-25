@@ -5,6 +5,7 @@ import { useFieldArray, useForm } from "react-hook-form";
 import { Plus, Trash2 } from "lucide-react";
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Input, Label } from "@/components/ui";
 import { send } from "@/lib/utils";
+import { parseProxyString } from "@/lib/proxy";
 
 export interface ProfileFormValues {
   label: string; firstName: string; lastName: string; email: string; phone: string; locale: string; timezone: string; isDefault: boolean;
@@ -36,7 +37,7 @@ const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(
 export function ProfileForm({ id, version, initial, proxyPasswordSet }: { id?: string; version?: number; initial?: ProfileFormValues; proxyPasswordSet?: boolean }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const { register, control, handleSubmit, watch, formState: { isSubmitting } } = useForm<ProfileFormValues>({ defaultValues: initial ?? EMPTY });
+  const { register, control, handleSubmit, watch, setValue, formState: { isSubmitting } } = useForm<ProfileFormValues>({ defaultValues: initial ?? EMPTY });
   const custom = useFieldArray({ control, name: "customFields" });
   const proxyEnabled = watch("proxyEnabled");
 
@@ -96,6 +97,19 @@ export function ProfileForm({ id, version, initial, proxyPasswordSet }: { id?: s
         <CardContent className="space-y-4">
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" {...register("proxyEnabled")} /> Route this profile through a proxy</label>
           {proxyEnabled && (
+            <div className="space-y-4">
+            <div className="space-y-1">
+              <Label htmlFor="proxyPaste">Paste proxy (ip:port:user:pass)</Label>
+              <Input id="proxyPaste" placeholder="185.12.34.56:8080:user:pass" autoComplete="off"
+                onChange={(e) => {
+                  const p = parseProxyString(e.target.value);
+                  if (!p) return;
+                  setValue("proxy.type", p.type); setValue("proxy.host", p.host); setValue("proxy.port", p.port);
+                  if (p.username !== undefined) setValue("proxy.username", p.username);
+                  if (p.password !== undefined) setValue("proxy.password", p.password);
+                }} />
+              <p className="text-xs text-muted-foreground">Fills the fields below. Also accepts ip:port, user:pass@ip:port and scheme:// prefixes.</p>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-1"><Label htmlFor="ptype">Proxy type</Label>
                 <select id="ptype" className="h-9 w-full rounded-md border bg-transparent px-2 text-sm" {...register("proxy.type")}>
@@ -106,6 +120,7 @@ export function ProfileForm({ id, version, initial, proxyPasswordSet }: { id?: s
               {field("proxy.username", "Proxy username", { autoComplete: "off" })}
               {field("proxy.password", proxyPasswordSet ? "Proxy password (leave blank to keep)" : "Proxy password", { type: "password", autoComplete: "new-password" })}
               {field("proxy.credentialRotateDays", "Remind to rotate credentials every (days)", { type: "number", min: 1, max: 365 })}
+            </div>
             </div>
           )}
         </CardContent>

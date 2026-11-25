@@ -8,12 +8,12 @@ import { send } from "@/lib/utils";
 const HEADERS = [
   "label", "firstName", "lastName", "email", "phone",
   "addressLine1", "addressLine2", "city", "region", "postcode", "country",
-  "proxyType", "proxyHost", "proxyPort", "proxyUsername", "proxyPassword",
+  "proxy",
   "custom:Date of Birth", "custom:Business Name",
 ];
 const SAMPLE = [
-  "John Smith,John,Smith,john.smith@example.com,07123456789,14 Park Row,,Leeds,West Yorkshire,LS1 5HD,GB,http,gb1.proxy.example,8080,user1,pass1,1985-03-07,Smith Engineering Ltd",
-  "Sarah Jones,Sarah,Jones,sarah.jones@example.com,07933322211,2 King St,,Manchester,Greater Manchester,M1 2AB,GB,http,gb2.proxy.example,8080,user2,pass2,1990-06-14,Jones Design Co",
+  "John Smith,John,Smith,john.smith@example.com,07123456789,14 Park Row,,Leeds,West Yorkshire,LS1 5HD,GB,185.12.34.56:8080:user1:pass1,1985-03-07,Smith Engineering Ltd",
+  "Sarah Jones,Sarah,Jones,sarah.jones@example.com,07933322211,2 King St,,Manchester,Greater Manchester,M1 2AB,GB,185.12.34.57:8080:user2:pass2,1990-06-14,Jones Design Co",
 ];
 
 interface Result { created: number; failed: { row: number; label: string; error: string }[]; ids: string[] }
@@ -53,7 +53,7 @@ export function ImportCsv() {
       <Card className="my-8 w-full max-w-2xl">
         <CardHeader>
           <CardTitle id="imp-title">Import profiles from CSV</CardTitle>
-          <CardDescription>One row per profile. First row must be the column headers. Custom fields use a <code>custom:</code> prefix, e.g. <code>custom:Date of Birth</code>. Each profile keeps its own proxy.</CardDescription>
+          <CardDescription>One row per profile. First row must be the column headers. Custom fields use a <code>custom:</code> prefix, e.g. <code>custom:Date of Birth</code>. The <code>proxy</code> column takes <code>ip:port:user:pass</code> (or <code>ip:port</code>). Each profile keeps its own proxy.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex flex-wrap gap-2">
