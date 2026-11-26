@@ -66,4 +66,7 @@
     --viz-warning: #fbb315;
   }
   body { @apply bg-background text-foreground antialiased; }
+  /* Native <select> dropdown options must stay legible in dark mode — the popup often renders
+     on a light background, so without this the option text is light-on-light and invisible. */
+  option { color: #111827; background-color: #ffffff; }
 }
