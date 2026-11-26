@@ -49,7 +49,7 @@ function claims(accessToken: string): { org: string } {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  session: { strategy: "jwt", maxAge: 60 * 60 * 12 },
+  session: { strategy: "jwt", maxAge: 60 * 60 * 24 * 30 }, // 30-day session: stay signed in on a personal install
   pages: { signIn: "/login" },
   providers: [
     // OAuth providers are enabled only when configured, so a missing app registration never breaks sign-in.

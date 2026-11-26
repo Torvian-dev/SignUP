@@ -19,8 +19,10 @@ const Env = z.object({
   JWT_PUBLIC_KEY_PEM: z.string().transform(normalizePem),
   JWT_ISSUER: z.string().default("formagent-api"),
   JWT_AUDIENCE: z.string().default("formagent"),
-  ACCESS_TOKEN_TTL_SEC: z.coerce.number().default(60 * 60 * 12), // align with the 12h session so it never expires mid-session (self-hosted, localhost)
-  REFRESH_TOKEN_TTL_SEC: z.coerce.number().default(60 * 60 * 24 * 14),
+  // 30-day access + refresh, matching the 30-day session: on a localhost single-user install the
+  // token never expires mid-session, so there's no refresh churn and no "invalid token" dropouts.
+  ACCESS_TOKEN_TTL_SEC: z.coerce.number().default(60 * 60 * 24 * 30),
+  REFRESH_TOKEN_TTL_SEC: z.coerce.number().default(60 * 60 * 24 * 30),
   INTERNAL_EXCHANGE_SECRET: z.string().min(32), // shared between Next.js server and API for session→JWT exchange
 
   // Encryption: KEK lives in Azure Key Vault (HSM-backed). In dev a local 32-byte hex key is allowed.
