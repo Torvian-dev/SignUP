@@ -19,7 +19,7 @@ const Env = z.object({
   JWT_PUBLIC_KEY_PEM: z.string().transform(normalizePem),
   JWT_ISSUER: z.string().default("formagent-api"),
   JWT_AUDIENCE: z.string().default("formagent"),
-  ACCESS_TOKEN_TTL_SEC: z.coerce.number().default(900),
+  ACCESS_TOKEN_TTL_SEC: z.coerce.number().default(60 * 60 * 12), // align with the 12h session so it never expires mid-session (self-hosted, localhost)
   REFRESH_TOKEN_TTL_SEC: z.coerce.number().default(60 * 60 * 24 * 14),
   INTERNAL_EXCHANGE_SECRET: z.string().min(32), // shared between Next.js server and API for session→JWT exchange
 
