@@ -4,8 +4,9 @@
  * conflicts and unrelated fields are never touched. One bad row is reported, the rest still apply.
  */
 import { withOrg } from "../../lib/db.js";
-import { encryptForOrg } from "../../lib/crypto.js";
+import { encryptForOrg, blindIndex } from "../../lib/crypto.js";
 import { parseProxyString } from "../../lib/proxy.js";
+import { badRequest } from "../../lib/errors.js";
 
 const enc = encryptForOrg;
 const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "").replace(/^(\d)/, "f_$1").slice(0, 63) || "field";
@@ -66,6 +67,65 @@ export async function bulkSetLocation(orgId: string, profileIds: string[],
         [profileIds, loc.countryCode.toUpperCase()]);
     }
     return { updated: profileIds.length, failed: [] };
+  });
+}
+
+/**
+ * General bulk field editor — set ANY profile column to the same value across the selection.
+ * `field` is one of the keys below (personal/settings/address) or "custom:<Field name>".
+ * Address sub-fields update only existing primary addresses; `country` creates one if missing.
+ */
+const PERSONAL_ENC: Record<string, string> = { firstName: "first_name_enc", lastName: "last_name_enc", phone: "phone_enc" };
+const ADDRESS_ENC: Record<string, string> = { line1: "line1_enc", line2: "line2_enc", city: "city_enc", region: "region_enc", postcode: "postcode_enc" };
+
+export async function bulkSetField(orgId: string, profileIds: string[], field: string, value: string): Promise<BulkResult> {
+  return withOrg(orgId, async (tx) => {
+    // Personal encrypted columns
+    if (field in PERSONAL_ENC) {
+      const r = await tx.query(`UPDATE profiles SET ${PERSONAL_ENC[field]}=$2, version=version+1 WHERE id = ANY($1) AND deleted_at IS NULL`,
+        [profileIds, await enc(orgId, value)]);
+      return { updated: r.rowCount ?? 0, failed: [] };
+    }
+    if (field === "email") {
+      const r = await tx.query(`UPDATE profiles SET email_enc=$2, email_blind_idx=$3, version=version+1 WHERE id = ANY($1) AND deleted_at IS NULL`,
+        [profileIds, await enc(orgId, value), value ? blindIndex(value) : null]);
+      return { updated: r.rowCount ?? 0, failed: [] };
+    }
+    if (field === "locale" || field === "timezone") {
+      const r = await tx.query(`UPDATE profiles SET ${field}=$2, version=version+1 WHERE id = ANY($1) AND deleted_at IS NULL`, [profileIds, value]);
+      return { updated: r.rowCount ?? 0, failed: [] };
+    }
+    if (field === "country") {
+      await tx.query(
+        `INSERT INTO profile_addresses (profile_id, org_id, kind, country_code)
+         SELECT id, $2, 'primary', $3 FROM profiles WHERE id = ANY($1) AND deleted_at IS NULL
+         ON CONFLICT (profile_id, kind) DO UPDATE SET country_code=EXCLUDED.country_code`,
+        [profileIds, orgId, value.toUpperCase().slice(0, 2)]);
+      return { updated: profileIds.length, failed: [] };
+    }
+    if (field.startsWith("address.")) {
+      const col = ADDRESS_ENC[field.slice(8)];
+      if (!col) throw badRequest(`unknown field ${field}`);
+      const r = await tx.query(`UPDATE profile_addresses SET ${col}=$2 WHERE profile_id = ANY($1) AND kind='primary'`,
+        [profileIds, await enc(orgId, value)]);
+      return { updated: r.rowCount ?? 0, failed: [] };
+    }
+    if (field.startsWith("custom:")) {
+      const label = field.slice(7).trim();
+      if (!label) throw badRequest("custom field needs a name");
+      const key = slug(label);
+      let updated = 0;
+      for (const pid of profileIds) {
+        await tx.query(
+          `INSERT INTO profile_custom_fields (profile_id, org_id, key, label, type, value_enc)
+           VALUES ($1,$2,$3,$4,'text',$5)
+           ON CONFLICT (profile_id, key) DO UPDATE SET label=EXCLUDED.label, value_enc=EXCLUDED.value_enc, updated_at=now()`,
+          [pid, orgId, key, label, await enc(orgId, value)]);
+        updated++;
+      }
+      return { updated, failed: [] };
+    }
+    throw badRequest(`unknown field ${field}`);
   });
 }
 

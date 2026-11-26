@@ -9,7 +9,7 @@ import { requirePermission } from "../middleware/rbac.js";
 import { createProfile, getDecryptedProfile, listProfiles, ProfileInput, updateProfile } from "../services/profiles/profileService.js";
 import { CSV_TEMPLATE_HEADERS, importProfiles } from "../services/profiles/importProfiles.js";
 import { runIdentityCheck } from "../services/identity/identityCheck.js";
-import { bulkSetProxies, bulkDelete, bulkSetLocation, bulkSetCustomField } from "../services/profiles/bulkProfiles.js";
+import { bulkSetProxies, bulkDelete, bulkSetLocation, bulkSetCustomField, bulkSetField } from "../services/profiles/bulkProfiles.js";
 import { parseCsv } from "../lib/csv.js";
 
 export const profilesRouter = Router();
@@ -75,6 +75,18 @@ profilesRouter.post("/bulk/custom-field", requirePermission("profile:write"), ah
   const body = parse(z.object({ profileIds: ProfileIds, label: z.string().min(1).max(80), value: z.string().max(2000) }), req.body);
   const result = await bulkSetCustomField(a.orgId, body.profileIds, { label: body.label, value: body.value });
   await audit(auditFromReq(req, { action: "profile.update", targetType: "profile_bulk", metadata: { op: "custom_field", count: body.profileIds.length } }));
+  res.json(result);
+}));
+
+profilesRouter.post("/bulk/field", requirePermission("profile:write"), ah(async (req, res) => {
+  const a = auth(req);
+  const body = parse(z.object({
+    profileIds: ProfileIds,
+    field: z.string().min(1).max(90),   // e.g. firstName, email, address.city, country, timezone, "custom:Business Name"
+    value: z.string().max(2000),
+  }), req.body);
+  const result = await bulkSetField(a.orgId, body.profileIds, body.field, body.value);
+  await audit(auditFromReq(req, { action: "profile.update", targetType: "profile_bulk", metadata: { op: "field", field: body.field.startsWith("custom:") ? "custom" : body.field, count: body.profileIds.length } }));
   res.json(result);
 }));
 

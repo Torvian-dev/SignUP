@@ -10,7 +10,7 @@ export interface ProfileRow {
   id: string; label: string; isDefault: boolean; displayName: string; email?: string;
   customFieldCount: number; proxy: { host: string; health: string } | null; updatedAt: string;
 }
-type Modal = null | "proxy" | "location" | "custom" | "delete";
+type Modal = null | "proxy" | "field" | "delete";
 
 /** Mask the password in an ip:port:user:pass line for display. */
 function maskProxy(s: string) {
@@ -45,8 +45,7 @@ export function ProfilesTable({ data }: { data: ProfileRow[] }) {
         <div className="sticky top-2 z-10 flex flex-wrap items-center gap-2 rounded-md border bg-card p-2 shadow-sm">
           <span className="px-2 text-sm font-medium">{sel.size} selected</span>
           <Button variant="outline" onClick={() => { setErr(null); setModal("proxy"); }}>Assign proxies</Button>
-          <Button variant="outline" onClick={() => { setErr(null); setModal("location"); }}>Set country / timezone</Button>
-          <Button variant="outline" onClick={() => { setErr(null); setModal("custom"); }}>Set custom field</Button>
+          <Button variant="outline" onClick={() => { setErr(null); setModal("field"); }}>Edit field</Button>
           <Button variant="outline" className="text-destructive" onClick={() => { setErr(null); setModal("delete"); }}>Delete</Button>
           <button className="ml-auto px-2 text-xs underline" onClick={() => setSel(new Set())}>Clear</button>
         </div>
@@ -80,10 +79,8 @@ export function ProfilesTable({ data }: { data: ProfileRow[] }) {
         <Overlay onClose={() => !busy && setModal(null)}>
           {modal === "proxy" && <ProxyModal rows={selectedRows} busy={busy} err={err}
             onApply={(items) => run(() => send("/api/v1/profiles/bulk/proxy", "POST", { items }))} />}
-          {modal === "location" && <LocationModal count={ids.length} busy={busy} err={err}
-            onApply={(body) => run(() => send("/api/v1/profiles/bulk/location", "POST", { profileIds: ids, ...body }))} />}
-          {modal === "custom" && <CustomModal count={ids.length} busy={busy} err={err}
-            onApply={(body) => run(() => send("/api/v1/profiles/bulk/custom-field", "POST", { profileIds: ids, ...body }))} />}
+          {modal === "field" && <FieldModal count={ids.length} busy={busy} err={err}
+            onApply={(body) => run(() => send("/api/v1/profiles/bulk/field", "POST", { profileIds: ids, ...body }))} />}
           {modal === "delete" && <DeleteModal rows={selectedRows} busy={busy} err={err}
             onConfirm={() => run(() => send("/api/v1/profiles/bulk/delete", "POST", { profileIds: ids }))} />}
         </Overlay>
@@ -139,34 +136,39 @@ function ProxyModal({ rows, busy, err, onApply }: { rows: ProfileRow[]; busy: bo
   );
 }
 
-function LocationModal({ count, busy, err, onApply }: { count: number; busy: boolean; err: string | null; onApply: (b: { countryCode?: string; timezone?: string; locale?: string }) => void }) {
-  const [country, setCountry] = useState(""); const [tz, setTz] = useState(""); const [locale, setLocale] = useState("");
-  const body = { countryCode: country.trim() || undefined, timezone: tz.trim() || undefined, locale: locale.trim() || undefined };
-  const any = body.countryCode || body.timezone || body.locale;
-  return (
-    <div className="space-y-3">
-      <h2 className="text-base font-semibold">Set country / timezone for {count} profile{count !== 1 ? "s" : ""}</h2>
-      <p className="text-xs text-muted-foreground">Fill only what you want to change — blank fields are left untouched. Keep these coherent with the proxy’s country.</p>
-      <div><Label>Country (2-letter, e.g. GB)</Label><Input value={country} onChange={(e) => setCountry(e.target.value.toUpperCase())} maxLength={2} placeholder="GB" /></div>
-      <div><Label>Timezone (e.g. Europe/London)</Label><Input value={tz} onChange={(e) => setTz(e.target.value)} list="tzs" placeholder="Europe/London" />
-        <datalist id="tzs"><option value="Europe/London" /><option value="America/New_York" /><option value="America/Los_Angeles" /><option value="Europe/Berlin" /><option value="Europe/Dublin" /><option value="Australia/Sydney" /></datalist></div>
-      <div><Label>Locale (e.g. en-GB)</Label><Input value={locale} onChange={(e) => setLocale(e.target.value)} placeholder="en-GB" /></div>
-      {err && <p className="text-sm text-destructive">{err}</p>}
-      <div className="flex justify-end gap-2"><Button disabled={busy || !any} onClick={() => onApply(body)}>{busy ? "Applying…" : "Apply"}</Button></div>
-    </div>
-  );
-}
+const FIELD_GROUPS: { group: string; items: [string, string][] }[] = [
+  { group: "Personal", items: [["firstName", "First name"], ["lastName", "Last name"], ["email", "Email"], ["phone", "Phone"]] },
+  { group: "Address", items: [["address.line1", "Address line 1"], ["address.line2", "Address line 2"], ["address.city", "City / Town"], ["address.region", "County / Region"], ["address.postcode", "Postcode / ZIP"], ["country", "Country (2-letter)"]] },
+  { group: "Settings", items: [["timezone", "Timezone"], ["locale", "Locale"]] },
+];
 
-function CustomModal({ count, busy, err, onApply }: { count: number; busy: boolean; err: string | null; onApply: (b: { label: string; value: string }) => void }) {
-  const [label, setLabel] = useState(""); const [value, setValue] = useState("");
+function FieldModal({ count, busy, err, onApply }: { count: number; busy: boolean; err: string | null; onApply: (b: { field: string; value: string }) => void }) {
+  const [field, setField] = useState("firstName");
+  const [customLabel, setCustomLabel] = useState("");
+  const [value, setValue] = useState("");
+  const isCustom = field === "__custom";
+  const effectiveField = isCustom ? `custom:${customLabel.trim()}` : field;
+  const placeholder = field === "country" ? "GB" : field === "timezone" ? "Europe/London" : field === "locale" ? "en-GB" : "";
+  const identityWarn = field === "email" || field === "firstName" || field === "lastName";
   return (
     <div className="space-y-3">
-      <h2 className="text-base font-semibold">Set a custom field on {count} profile{count !== 1 ? "s" : ""}</h2>
-      <p className="text-xs text-muted-foreground">Adds or updates one custom field with the same value on every selected profile.</p>
-      <div><Label>Field name</Label><Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Business Name" /></div>
-      <div><Label>Value</Label><Input value={value} onChange={(e) => setValue(e.target.value)} placeholder="Acme Ltd" /></div>
+      <h2 className="text-base font-semibold">Edit a field on {count} profile{count !== 1 ? "s" : ""}</h2>
+      <p className="text-xs text-muted-foreground">Sets the chosen field to the same value on every selected profile. Leave the value blank to clear it.</p>
+      <div><Label>Field</Label>
+        <select value={field} onChange={(e) => setField(e.target.value)} className="h-9 w-full rounded-md border bg-transparent px-2 text-sm">
+          {FIELD_GROUPS.map((g) => (
+            <optgroup key={g.group} label={g.group}>
+              {g.items.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </optgroup>
+          ))}
+          <option value="__custom">Custom field…</option>
+        </select>
+      </div>
+      {isCustom && <div><Label>Custom field name</Label><Input value={customLabel} onChange={(e) => setCustomLabel(e.target.value)} placeholder="Business Name" /></div>}
+      <div><Label>Value</Label><Input value={value} onChange={(e) => setValue(e.target.value)} placeholder={placeholder} /></div>
+      {identityWarn && <p className="text-xs text-amber-600">Heads up: this is a per-person field — setting it the same on many profiles makes them identical. Usually you want these unique.</p>}
       {err && <p className="text-sm text-destructive">{err}</p>}
-      <div className="flex justify-end gap-2"><Button disabled={busy || !label.trim()} onClick={() => onApply({ label: label.trim(), value })}>{busy ? "Applying…" : "Apply"}</Button></div>
+      <div className="flex justify-end gap-2"><Button disabled={busy || (isCustom && !customLabel.trim())} onClick={() => onApply({ field: effectiveField, value })}>{busy ? "Applying…" : "Apply"}</Button></div>
     </div>
   );
 }
