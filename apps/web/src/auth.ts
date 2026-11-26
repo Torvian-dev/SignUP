@@ -71,6 +71,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
+    // Used by the middleware (export { auth as middleware }) to gate every matched route:
+    // no session → redirect to pages.signIn ("/login"), which forwards to "/setup" on first run.
+    // Without this, Auth.js v5 lets unauthenticated requests through and protected pages throw.
+    authorized({ auth }) {
+      return !!auth?.user;
+    },
     async jwt({ token, user, account }) {
       if (user && account) {
         const userId = account.type === "credentials" ? user.id! : await oauthUser(account.provider, account.providerAccountId, user);
