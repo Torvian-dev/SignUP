@@ -27,7 +27,8 @@ function secretFields(provider: string): { key: string; label: string; secret: b
 }
 function configFields(provider: string): { key: string; label: string; placeholder?: string }[] {
   if (["claude", "openai", "gemini"].includes(provider)) return [{ key: "model", label: "Model", placeholder: provider === "claude" ? "claude-opus-5-5" : provider === "openai" ? "gpt-4.1" : "gemini-2.5-pro" }];
-  if (["dispurcaptcha", "resolvr", "compatible"].includes(provider)) return [{ key: "baseUrl", label: "API base URL (https, from the provider's docs)", placeholder: "https://api.provider.example" }];
+  if (["dispurcaptcha", "compatible"].includes(provider)) return [{ key: "baseUrl", label: "API base URL (https, from the provider's docs)", placeholder: "https://api.provider.example" }];
+  if (provider === "resolvr") return [{ key: "baseUrl", label: "API base URL (optional — defaults to api.resolvr.com)", placeholder: "https://api.resolvr.com" }];
   if (provider === "smtp") return [{ key: "host", label: "SMTP host" }, { key: "port", label: "SMTP port", placeholder: "587" }, { key: "imapHost", label: "IMAP host (for verification emails)" }];
   if (provider === "m365") return [{ key: "mailbox", label: "Mailbox (UPN)" }];
   if (provider === "sendgrid") return [{ key: "fromAddress", label: "From address" }];

@@ -19,6 +19,7 @@ import { audit } from "../../middleware/audit.js";
 import { chain, type ResolvedCredential } from "../secrets/providerSecrets.js";
 import { BestCaptchaSolverProvider } from "./providers/bestcaptchasolver.js";
 import { CapSolverProvider } from "./providers/capsolver.js";
+import { ResolvrProvider } from "./providers/resolvr.js";
 import { CreateTaskProvider } from "./providers/createTaskApi.js";
 import { DeathByCaptchaProvider } from "./providers/deathbycaptcha.js";
 import { CaptchaProviderError, type CaptchaChallenge, type CaptchaProvider, type CaptchaSolution } from "./types.js";
@@ -34,11 +35,13 @@ export function buildCaptchaProvider(c: ResolvedCredential): CaptchaProvider {
       return new CreateTaskProvider(c.provider, c.secret.apiKey!);
     case "capsolver":
       return new CapSolverProvider(c.secret.apiKey!);
-    case "dispurcaptcha":
     case "resolvr":
-      // Named providers on the Anti-Captcha-style createTask protocol. Endpoint is set by the admin
-      // (config.baseUrl) from the provider's own API docs — not hard-coded because it is unverified.
-      // If either service uses a different protocol, give it a dedicated adapter like capsolver.ts.
+      // Resolvr's own async REST API (verified against https://resolvr.com/docs). Base URL is fixed;
+      // config.baseUrl only overrides it if the account uses a custom endpoint.
+      return new ResolvrProvider(c.secret.apiKey!, c.config.baseUrl ? String(c.config.baseUrl) : undefined);
+    case "dispurcaptcha":
+      // Named provider on the Anti-Captcha-style createTask protocol; admin supplies the base URL
+      // (unverified — give it a dedicated adapter if its API differs).
       if (!c.config.baseUrl) throw new Error(`${c.provider}: set the API base URL in Admin → API Keys`);
       return new CreateTaskProvider(c.provider, c.secret.apiKey!, String(c.config.baseUrl));
     case "compatible":

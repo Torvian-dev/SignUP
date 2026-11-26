@@ -102,3 +102,21 @@ describe("parseProxyString", () => {
     expect(parseProxyString("1.2.3.4:99999")).toBeNull();
   });
 });
+
+import { resolvrTaskBody } from "../src/services/captcha/providers/resolvr.js";
+describe("resolvrTaskBody", () => {
+  const base = { pageUrl: "https://site.example/form", siteKey: "6LcABC", userAgent: "UA",
+    proxy: { type: "http", host: "1.2.3.4", port: 8080, username: "u", password: "p" } } as const;
+  it("builds reCAPTCHA v2 / v3 / Turnstile bodies in Resolvr's snake_case shape", () => {
+    expect(resolvrTaskBody({ ...base, kind: "recaptcha_v2" } as any)).toEqual({
+      type: "recaptcha_v2", sitekey: "6LcABC", url: "https://site.example/form", proxy: "http://u:p@1.2.3.4:8080", user_agent: "UA" });
+    expect(resolvrTaskBody({ ...base, kind: "recaptcha_v3", action: "checkout" } as any)).toMatchObject({
+      type: "recaptcha_v3", sitekey: "6LcABC", data: { action: "checkout" } });
+    expect(resolvrTaskBody({ ...base, kind: "turnstile" } as any)).toMatchObject({ type: "cloudflare_turnstile", sitekey: "6LcABC" });
+  });
+  it("formats a socks5 proxy with auth and handles the image task", () => {
+    expect(resolvrTaskBody({ ...base, kind: "recaptcha_v2", proxy: { type: "socks5", host: "h", port: 1080, username: "a", password: "b" } } as any).proxy)
+      .toBe("socks5://a:b@h:1080");
+    expect(resolvrTaskBody({ kind: "image", pageUrl: "x", imageBase64: "ZZZ" } as any)).toEqual({ type: "botdeflector_image", image: "ZZZ" });
+  });
+});
