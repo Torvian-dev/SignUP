@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Activity, Gauge, KeyRound, Layers, PlayCircle, ScrollText, Settings2, Users } from "lucide-react";
+import { Activity, BookMarked, Gauge, KeyRound, Layers, PlayCircle, ScrollText, Settings2, Users } from "lucide-react";
 import { auth, signOut } from "@/auth";
 
 const NAV = [
@@ -8,6 +8,7 @@ const NAV = [
   { href: "/batches", label: "Batch sign-ups", icon: Layers },
   { href: "/runs", label: "Submission history", icon: Activity },
   { href: "/profiles", label: "Profiles", icon: Users },
+  { href: "/sites", label: "Remembered sites", icon: BookMarked },
   { href: "/admin/api-keys", label: "API keys", icon: KeyRound },
   { href: "/admin/policy", label: "Policy & guardrails", icon: Settings2 },
   { href: "/admin/audit", label: "Audit log", icon: ScrollText },

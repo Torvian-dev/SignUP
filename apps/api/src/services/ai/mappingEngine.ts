@@ -57,7 +57,7 @@ export async function mapPage(input: MapPageInput): Promise<MapPageOutput> {
   const decided = new Map<string, Decision>();
 
   // Tier 1 — learned memory for this exact site
-  const memory = await withOrg(orgId, (tx) => domainMemory(tx, domain, fillable));
+  const memory = await withOrg(orgId, (tx) => domainMemory(tx, orgId, domain, fillable));
   for (const m of memory) {
     if (m.posterior >= MEMORY_MIN_POSTERIOR && m.n >= MEMORY_MIN_N && paths.has(m.profilePath)) {
       decided.set(m.fieldId, { fieldId: m.fieldId, profilePath: m.profilePath, transform: m.transform,

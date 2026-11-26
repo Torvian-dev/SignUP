@@ -23,14 +23,14 @@ export function signatureText(f: FieldDescriptor): string {
 
 const posterior = (a: number, b: number) => a / (a + b);
 
-export async function domainMemory(tx: Tx, domain: string, fields: (FieldDescriptor & { fieldKey: string })[]): Promise<MemoryHit[]> {
+export async function domainMemory(tx: Tx, orgId: string, domain: string, fields: (FieldDescriptor & { fieldKey: string })[]): Promise<MemoryHit[]> {
   if (!fields.length) return [];
   const { rows } = await tx.query(
     `SELECT DISTINCT ON (field_key) field_key, profile_path, transform, alpha::float, beta::float,
             failures, corrections, successes + failures + corrections AS n
-     FROM mapping_memory WHERE scope='domain' AND domain=$1 AND field_key = ANY($2)
+     FROM mapping_memory WHERE scope='domain' AND org_id=$1 AND domain=$2 AND field_key = ANY($3)
      ORDER BY field_key, (alpha / (alpha + beta)) DESC`,
-    [domain, fields.map((f) => f.fieldKey)],
+    [orgId, domain, fields.map((f) => f.fieldKey)],
   );
   const byKey = new Map(rows.map((r) => [r.field_key, r]));
   return fields.flatMap((f) => {
