@@ -1,7 +1,7 @@
 /**
  * CapSolver (api.capsolver.com). Same createTask/getTaskResult envelope as Anti-Captcha, but:
  *  - task type names use "ProxyLess" casing and Turnstile is "AntiTurnstileTask…",
- *  - proxies are passed as one string "scheme:host:port:user:pass",
+ *  - proxies are passed as one string "http:ip:port:user:pass" (or "socks5:ip:port:user:pass"), per the docs,
  *  - ImageToTextTask is synchronous (solution returned by createTask).
  * Verify task type names against the CapSolver docs before go-live; they change occasionally.
  */
@@ -53,7 +53,7 @@ export class CapSolverProvider implements CaptchaProvider {
     if (!res.ok) throw new CaptchaProviderError(this.name, `HTTP_${res.status}`, await res.text());
     const j = (await res.json()) as T & { errorId: number; errorCode?: string; errorDescription?: string };
     if (j.errorId) {
-      const fatal = ["ERROR_KEY_DENIED_ACCESS", "ERROR_ZERO_BALANCE", "ERROR_INVALID_TASK_DATA"];
+      const fatal = ["ERROR_KEY_DOES_NOT_EXIST", "ERROR_KEY_DENIED_ACCESS", "ERROR_ZERO_BALANCE", "ERROR_IP_NOT_ALLOWED", "ERROR_INVALID_TASK_DATA"];
       throw new CaptchaProviderError(this.name, j.errorCode ?? "ERROR", j.errorDescription ?? "", !fatal.includes(j.errorCode ?? ""));
     }
     return j;
