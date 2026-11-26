@@ -1,0 +1,22 @@
+# Gitleaks config — extends the default rules, with an allowlist for test fixtures that are not
+# real secrets. Everything outside these paths/values is still scanned normally.
+title = "FormAgent gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Test fixtures and public values — not real secrets"
+
+# Test code only. These directories hold fake fixtures and public test keys, never live secrets.
+paths = [
+  '''apps/api/test/.*''',
+]
+
+# Belt-and-braces: the specific public/fixture values, in case they ever move out of test/.
+regexes = [
+  # Google's published public reCAPTCHA TEST site key (documented, always-pass; not a secret).
+  '''6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI''',
+  # Base32 test fixture used in the mapping unit test.
+  '''GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ''',
+]
