@@ -9,6 +9,7 @@ import { requirePermission } from "../middleware/rbac.js";
 import { createProfile, getDecryptedProfile, listProfiles, ProfileInput, updateProfile } from "../services/profiles/profileService.js";
 import { CSV_TEMPLATE_HEADERS, importProfiles } from "../services/profiles/importProfiles.js";
 import { runIdentityCheck } from "../services/identity/identityCheck.js";
+import { bulkSetProxies, bulkDelete, bulkSetLocation, bulkSetCustomField } from "../services/profiles/bulkProfiles.js";
 import { parseCsv } from "../lib/csv.js";
 
 export const profilesRouter = Router();
@@ -43,6 +44,46 @@ profilesRouter.post("/import", requirePermission("profile:write"), ah(async (req
   await audit(auditFromReq(req, { action: "profile.create", targetType: "profile_import",
     metadata: { created: result.created, failed: result.failed.length } }));
   res.status(result.created ? 201 : 400).json(result);
+}));
+
+// ---- Bulk actions over selected profiles (registered before "/:id") ----
+const ProfileIds = z.array(z.string().uuid()).min(1).max(1000);
+
+profilesRouter.post("/bulk/proxy", requirePermission("profile:write"), ah(async (req, res) => {
+  const a = auth(req);
+  const { items } = parse(z.object({ items: z.array(z.object({ profileId: z.string().uuid(), proxy: z.string().min(3) })).min(1).max(1000) }), req.body);
+  const result = await bulkSetProxies(a.orgId, items);
+  await audit(auditFromReq(req, { action: "profile.update", targetType: "profile_bulk", metadata: { op: "proxy", updated: result.updated, failed: result.failed.length } }));
+  res.json(result);
+}));
+
+profilesRouter.post("/bulk/location", requirePermission("profile:write"), ah(async (req, res) => {
+  const a = auth(req);
+  const body = parse(z.object({
+    profileIds: ProfileIds,
+    countryCode: z.string().length(2).optional(),
+    timezone: z.string().min(1).max(64).optional(),
+    locale: z.string().min(2).max(10).optional(),
+  }).refine((b) => b.countryCode || b.timezone || b.locale, "set at least one of country, timezone or locale"), req.body);
+  const result = await bulkSetLocation(a.orgId, body.profileIds, body);
+  await audit(auditFromReq(req, { action: "profile.update", targetType: "profile_bulk", metadata: { op: "location", count: body.profileIds.length } }));
+  res.json(result);
+}));
+
+profilesRouter.post("/bulk/custom-field", requirePermission("profile:write"), ah(async (req, res) => {
+  const a = auth(req);
+  const body = parse(z.object({ profileIds: ProfileIds, label: z.string().min(1).max(80), value: z.string().max(2000) }), req.body);
+  const result = await bulkSetCustomField(a.orgId, body.profileIds, { label: body.label, value: body.value });
+  await audit(auditFromReq(req, { action: "profile.update", targetType: "profile_bulk", metadata: { op: "custom_field", count: body.profileIds.length } }));
+  res.json(result);
+}));
+
+profilesRouter.post("/bulk/delete", requirePermission("profile:delete"), ah(async (req, res) => {
+  const a = auth(req);
+  const { profileIds } = parse(z.object({ profileIds: ProfileIds }), req.body);
+  const result = await bulkDelete(a.orgId, profileIds);
+  await audit(auditFromReq(req, { action: "profile.delete", targetType: "profile_bulk", metadata: { deleted: result.updated } }));
+  res.json(result);
 }));
 
 /** Identity self-test: launch a real session and report what a detection script would see. */
