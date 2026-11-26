@@ -13,6 +13,24 @@ export async function pause(minMs = 250, maxMs = 900) {
   await new Promise((r) => setTimeout(r, rand(minMs, maxMs)));
 }
 
+/**
+ * "Think time" between fields: mostly a short beat, but ~1 in 6 times a longer pause, as a person
+ * glances away, re-reads a label, or decides what to type. Keeps the cadence from being a metronome.
+ */
+export async function thinkTime() {
+  const base = rand(400, 1100);
+  const lingers = Math.random() < 0.16 ? rand(900, 2600) : 0;
+  await new Promise((r) => setTimeout(r, base + lingers));
+}
+
+/**
+ * Hesitation before a committing click (Submit / Register / Create account). People pause to review
+ * the form before the final click; `big` makes it the longer, pre-submit kind.
+ */
+export async function hesitate(big = false) {
+  await new Promise((r) => setTimeout(r, big ? rand(1400, 3800) : rand(500, 1300)));
+}
+
 /** Move the mouse along a slightly curved path to the element, then click. */
 export async function humanClick(page: Page, target: Locator) {
   await target.scrollIntoViewIfNeeded();

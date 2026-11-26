@@ -8,6 +8,7 @@ import { ah, parse } from "../middleware/http.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { createProfile, getDecryptedProfile, listProfiles, ProfileInput, updateProfile } from "../services/profiles/profileService.js";
 import { CSV_TEMPLATE_HEADERS, importProfiles } from "../services/profiles/importProfiles.js";
+import { runIdentityCheck } from "../services/identity/identityCheck.js";
 import { parseCsv } from "../lib/csv.js";
 
 export const profilesRouter = Router();
@@ -42,6 +43,14 @@ profilesRouter.post("/import", requirePermission("profile:write"), ah(async (req
   await audit(auditFromReq(req, { action: "profile.create", targetType: "profile_import",
     metadata: { created: result.created, failed: result.failed.length } }));
   res.status(result.created ? 201 : 400).json(result);
+}));
+
+/** Identity self-test: launch a real session and report what a detection script would see. */
+profilesRouter.post("/:id/identity-check", requirePermission("profile:read"), ah(async (req, res) => {
+  const a = auth(req);
+  const report = await runIdentityCheck(a.orgId, req.params.id!);
+  await audit(auditFromReq(req, { action: "profile.update", targetType: "profile", targetId: req.params.id, metadata: { identityCheck: true } }));
+  res.json(report);
 }));
 
 /** Full decrypted profile — explicit "reveal" permission + audit, because it returns PII. */

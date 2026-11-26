@@ -1,5 +1,6 @@
 import { api } from "@/lib/api";
 import { ProfileForm, type ProfileFormValues } from "./ProfileForm";
+import { IdentityCheck } from "./IdentityCheck";
 
 export default async function EditProfilePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -14,5 +15,10 @@ export default async function EditProfilePage({ params }: { params: Promise<{ id
                    : { type: "http", host: "", port: 8080, username: "", password: "" },
     customFields: Object.entries(p.custom).map(([key, f]: [string, any]) => ({ key, label: f.label, type: f.type, value: f.value ?? "", synonyms: (f.synonyms ?? []).join(", ") })),
   };
-  return <ProfileForm id={id} version={p.version} initial={initial} proxyPasswordSet={!!p.proxy?.passwordSet} />;
+  return (
+    <>
+      <ProfileForm id={id} version={p.version} initial={initial} proxyPasswordSet={!!p.proxy?.passwordSet} />
+      <IdentityCheck id={id} />
+    </>
+  );
 }

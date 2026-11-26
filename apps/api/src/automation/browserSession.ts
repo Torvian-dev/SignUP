@@ -22,6 +22,8 @@ export interface BrowserSession {
   context: BrowserContext;
   page: Page;
   userAgent: string;
+  /** HTTP status of the most recent main-frame document response (for block detection). */
+  mainStatus(): number | null;
   save(): Promise<void>;
   close(): Promise<void>;
 }
@@ -68,7 +70,12 @@ export async function openSession(profile: DecryptedProfile): Promise<BrowserSes
   // Remote browser (Browserless/Browserbase) or local Chromium in the worker pod.
   // --disable-blink-features=AutomationControlled stops navigator.webdriver being set to true;
   // the stealth init-script below covers the remaining vectors.
-  const stealthArgs = ["--disable-dev-shm-usage", "--disable-blink-features=AutomationControlled"];
+  const stealthArgs = [
+    "--disable-dev-shm-usage",
+    "--disable-blink-features=AutomationControlled",
+    // Force WebRTC to use only the proxied path, so the machine's real IP can't leak via STUN.
+    "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+  ];
   const browser = env.BROWSER_WS_ENDPOINT
     ? await chromium.connectOverCDP(env.BROWSER_WS_ENDPOINT)
     : await chromium.launch({ headless: true, executablePath: env.CHROMIUM_EXECUTABLE_PATH, args: stealthArgs });
@@ -107,6 +114,13 @@ export async function openSession(profile: DecryptedProfile): Promise<BrowserSes
 
   const page = await context.newPage();
 
+  // Track the status of main-frame document responses so block detection can read the real HTTP code.
+  let lastMainStatus: number | null = null;
+  page.on("response", (resp) => {
+    const req = resp.request();
+    if (req.frame() === page.mainFrame() && req.resourceType() === "document") lastMainStatus = resp.status();
+  });
+
   const save = async () => {
     const state = await context.storageState();
     const key = await putEncrypted(profile.orgId, BLOB.browserState, `${profile.id}/storage.json.enc`, Buffer.from(JSON.stringify(state)));
@@ -116,6 +130,7 @@ export async function openSession(profile: DecryptedProfile): Promise<BrowserSes
 
   return {
     browser, context, page, userAgent, save,
+    mainStatus: () => lastMainStatus,
     close: async () => {
       await save().catch(() => undefined);
       await context.close().catch(() => undefined);

@@ -158,5 +158,63 @@ export function stealthScript(fp: Fingerprint, userAgent: string, chromeMajor: n
       AP.getFloatFrequencyData = function (arr) { orig.call(this, arr); for (let i = 0; i < arr.length; i += 100) arr[i] = arr[i] + seed; };
     }
   } catch (e) {}
+
+  // 11) WebRTC leak guard — drop ICE candidates that expose a private/LAN/mDNS address, so the
+  //     machine's real IP can never leak out from behind the proxy. (Belt to the launch-flag braces
+  //     '--force-webrtc-ip-handling-policy=disable_non_proxied_udp'.) WebRTC stays present — fully
+  //     removing it is itself a tell — it just can't reveal the local address.
+  try {
+    const RTC = window.RTCPeerConnection || window.webkitRTCPeerConnection;
+    if (RTC) {
+      const isLeaky = (c) => {
+        if (!c) return false;
+        const s = (c.candidate || c.address || '') + '';
+        return /(\b10\.)|(\b127\.)|(\b192\.168\.)|(\b169\.254\.)|(\b172\.(1[6-9]|2\d|3[01])\.)|\.local\b|([0-9a-f]{1,4}:){2,}/i.test(s);
+      };
+      const Wrapped = function (cfg) {
+        const pc = new RTC(cfg);
+        const realAdd = pc.addEventListener.bind(pc);
+        pc.addEventListener = function (type, cb, opts) {
+          if (type === 'icecandidate' && typeof cb === 'function') {
+            return realAdd(type, (ev) => { if (ev && ev.candidate && isLeaky(ev.candidate)) return; cb(ev); }, opts);
+          }
+          return realAdd(type, cb, opts);
+        };
+        Object.defineProperty(pc, 'onicecandidate', {
+          configurable: true,
+          set(cb) { this._oic = cb; realAdd('icecandidate', (ev) => { if (ev && ev.candidate && isLeaky(ev.candidate)) return; cb && cb(ev); }); },
+          get() { return this._oic; },
+        });
+        return pc;
+      };
+      Wrapped.prototype = RTC.prototype;
+      window.RTCPeerConnection = Wrapped;
+      if (window.webkitRTCPeerConnection) window.webkitRTCPeerConnection = Wrapped;
+    }
+  } catch (e) {}
+
+  // 12) Desktop coherence: no touch, realistic media devices, a plausible battery.
+  try { def(navigator, 'maxTouchPoints', () => 0); } catch (e) {}
+  try {
+    if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+      const gid = 'g' + ((fp.canvasSeed * 2654435761) >>> 0).toString(16);
+      const did = (n) => ((fp.canvasSeed * 2654435761 + n) >>> 0).toString(16).padStart(8, '0').repeat(8).slice(0, 64);
+      const devices = [
+        { kind: 'audioinput', label: '', deviceId: did(1), groupId: gid },
+        { kind: 'videoinput', label: '', deviceId: did(2), groupId: gid },
+        { kind: 'audiooutput', label: '', deviceId: 'default', groupId: gid },
+      ];
+      navigator.mediaDevices.enumerateDevices = () => Promise.resolve(devices.map((d) => ({ ...d, toJSON: () => d })));
+    }
+  } catch (e) {}
+  try {
+    const level = Math.min(1, 0.4 + (fp.canvasSeed % 60) / 100);
+    const battery = { charging: true, chargingTime: 0, dischargingTime: Infinity, level,
+      addEventListener() {}, removeEventListener() {}, dispatchEvent() { return true; },
+      onchargingchange: null, onchargingtimechange: null, ondischargingtimechange: null, onlevelchange: null };
+    // Desktop Chrome always exposes getBattery; headless drops it, so define it unconditionally.
+    try { Object.defineProperty(navigator, 'getBattery', { value: () => Promise.resolve(battery), configurable: true, writable: true }); }
+    catch (e) { navigator.getBattery = () => Promise.resolve(battery); }
+  } catch (e) {}
 })();`;
 }

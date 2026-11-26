@@ -47,6 +47,14 @@ export async function checkRunAllowed(orgId: string, profileId: string, url: URL
       `SELECT count(*) AS n FROM automation_runs WHERE status NOT IN ('succeeded','failed','cancelled','paused','queued')`)).rows[0].n);
     if (active >= (pol?.max_concurrent_runs ?? 3)) throw policyViolation("concurrent run limit reached — try again shortly");
 
+    // Proxy quarantine: if this profile's proxy was blocked/rate-limited recently, skip it until it clears.
+    const cooled = (await tx.query(
+      "SELECT cooldown_until, last_block_reason FROM profile_proxies WHERE profile_id=$1 AND cooldown_until > now()", [profileId])).rows[0];
+    if (cooled) {
+      const mins = Math.ceil((new Date(cooled.cooldown_until).getTime() - Date.now()) / 60000);
+      throw policyViolation(`proxy is quarantined for ~${mins} min${cooled.last_block_reason ? ` (${cooled.last_block_reason})` : ""}`);
+    }
+
     const existing = (await tx.query("SELECT 1 FROM site_accounts WHERE profile_id=$1 AND domain=$2", [profileId, domain])).rowCount;
     const effective = intent === "signup" && existing ? "login" : intent;
     return { domain, intent: effective };

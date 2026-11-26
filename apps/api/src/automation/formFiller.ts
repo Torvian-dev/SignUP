@@ -5,7 +5,7 @@
 import type { Locator, Page } from "playwright";
 import { getDecrypted, BLOB } from "./blobPaths.js";
 import { resolveFrame } from "./frames.js";
-import { humanClick, humanType, pause } from "./humanInput.js";
+import { humanClick, humanType, pause, thinkTime } from "./humanInput.js";
 import { applyTransform } from "./transforms.js";
 import type { RawField } from "./pageAnalyzer.js";
 import type { Decision } from "../services/ai/mappingEngine.js";
@@ -123,7 +123,7 @@ export async function fillFields(ctx: FillContext, decisions: Decision[]): Promi
     } catch (err) {
       results.push({ fieldId: d.fieldId, decisionId: d.decisionId, status: "error", valid: false, validationMessage: (err as Error).message.slice(0, 200) });
     }
-    await pause(150, 500);
+    await thinkTime();  // vary the gap between fields; occasionally linger like a real person
   }
   return results;
 }

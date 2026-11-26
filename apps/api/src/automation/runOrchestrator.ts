@@ -26,13 +26,15 @@ import { getDecryptedProfile } from "../services/profiles/profileService.js";
 import { flattenValues } from "../services/profiles/profileVocabulary.js";
 import { BLOB, putEncrypted } from "./blobPaths.js";
 import { openSession, type BrowserSession } from "./browserSession.js";
+import { detectBlock, type BlockVerdict } from "./blockDetector.js";
+import { preflightProxy } from "./proxyPreflight.js";
 import { detectCaptcha, injectSolution, toChallenge } from "./captchaDetector.js";
 import { emit, setStatus } from "./events.js";
 import { fillFields, type FillResult } from "./formFiller.js";
 import { startLiveView } from "./liveView.js";
 import { clickAndSettle, dismissCookieBanner, followSignupLink, pickPrimaryButton } from "./navigator.js";
 import { resolveFrame } from "./frames.js";
-import { humanType } from "./humanInput.js";
+import { humanType, hesitate } from "./humanInput.js";
 import { audit as writeAudit } from "../middleware/audit.js";
 import { analysePage, type PageAnalysis, type RawField } from "./pageAnalyzer.js";
 
@@ -60,6 +62,23 @@ async function nextControl(runId: string, timeoutMs: number): Promise<Control | 
 export class CancelledError extends Error {}
 /** A profile the batch should skip (auto-submit only): can't fill/solve safely. Not retried. */
 export class SkipProfileError extends Error {}
+/** The site blocked or rate-limited us. The run fails and the profile's proxy is quarantined. */
+export class BlockedError extends Error {
+  constructor(message: string, readonly verdict: BlockVerdict) { super(message); }
+}
+
+const BLOCK_COOLDOWN_MS: Record<BlockVerdict, number> = { blocked: 6 * 3_600_000, rate_limited: 30 * 60_000, clean: 0 };
+
+/** Put the profile's single proxy on a cooldown so the batch skips this profile until it clears. */
+async function quarantineProxy(orgId: string, profileId: string, verdict: BlockVerdict, reason: string) {
+  const ms = BLOCK_COOLDOWN_MS[verdict];
+  if (!ms) return;
+  await withOrg(orgId, (tx) => tx.query(
+    `UPDATE profile_proxies SET cooldown_until = now() + ($3 || ' milliseconds')::interval,
+            block_count = block_count + 1, last_block_reason = $2, health_status = 'degraded', updated_at = now()
+     WHERE profile_id = $1`,
+    [profileId, reason.slice(0, 200), String(ms)]));
+}
 
 export async function executeRun(orgId: string, runId: string): Promise<void> {
   const run = await withOrg(orgId, async (tx) => (await tx.query("SELECT * FROM automation_runs WHERE id=$1", [runId])).rows[0]);
@@ -89,9 +108,32 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
     session = await openSession(profile);
     const { page } = session;
 
+    // After any navigation/submit, stop if the site has thrown up a block or rate-limit wall.
+    const guardBlocked = async () => {
+      const check = await detectBlock(page, session!.mainStatus());
+      if (check.verdict === "clean") return;
+      await quarantineProxy(orgId, profile.id, check.verdict, check.reason);
+      throw new BlockedError(check.reason, check.verdict);
+    };
+
+    // Proxy preflight: verify the profile's proxy is alive and its exit country is coherent.
+    if (profile.proxy) {
+      const pf = await preflightProxy(session.context, profile.addresses.primary?.countryCode);
+      if (!pf.reachable) {
+        await quarantineProxy(orgId, profile.id, "rate_limited", "proxy did not respond on preflight");
+        throw new BlockedError("proxy is not responding", "rate_limited");
+      }
+      await withOrg(orgId, (tx) => tx.query("UPDATE profile_proxies SET last_exit_ip=$2, last_checked_at=now(), health_status='healthy' WHERE profile_id=$1", [profile.id, pf.ip]));
+      if (pf.mismatch) {
+        await emit(orgId, runId, "note",
+          `Proxy exits from ${pf.country} but the profile is set to ${profile.addresses.primary?.countryCode} — timezone/locale may not match the IP`, undefined, "warn");
+      }
+    }
+
     const startUrl = run.checkpoint?.url ?? run.url;
     await emit(orgId, runId, "navigation", `Opening ${new URL(startUrl).hostname}`);
     await page.goto(startUrl, { waitUntil: "domcontentloaded" });
+    await guardBlocked();
     await dismissCookieBanner(page);
 
     for (let step = run.current_step ?? 0; step < MAX_STEPS; step++) {
@@ -161,7 +203,9 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
       if (canAutoAdvance && primary) {
         for (const d of mapped.decisions) if (d.decisionId && d.profilePath) await recordOutcome(orgId, run.created_by, { decisionId: d.decisionId, outcome: "accepted", finalPath: d.profilePath, finalTransform: d.transform });
         await emit(orgId, runId, "navigation", `Auto-advancing: "${primary.text}"`);
+        await hesitate(false);  // brief beat before moving to the next step
         await clickAndSettle(page, primary.locator, primary.framePath);
+        await guardBlocked();
         await saveCheckpoint(orgId, runId, step + 1, page.url());
         continue;
       }
@@ -191,7 +235,9 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
         await setStatus(orgId, runId, "submitting", { approved_by: run.created_by });
         await writeAudit({ orgId, actorUserId: run.created_by, action: "run.submit", targetType: "run", targetId: runId, metadata: { domain, auto: true, batch: run.batch_id } });
         await emit(orgId, runId, "navigation", `Auto-submitting: "${primary.text}"`);
+        await hesitate(true);  // longer "reviewing the form" pause before the committing click
         await clickAndSettle(page, primary.locator, primary.framePath);
+        await guardBlocked();  // a block page right after submit = flagged; quarantine, don't count as success
         await withOrg(orgId, (tx) => tx.query("UPDATE automation_runs SET submitted_at = now() WHERE id=$1", [runId]));
         await saveCheckpoint(orgId, runId, step + 1, page.url());
         await maybeVerifyEmail(orgId, runId, page, domain, values["personal.email"]);
@@ -214,7 +260,7 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
       await setStatus(orgId, runId, "submitting", { approved_by: ctrl.userId });
       await audit(orgId, ctrl.userId, runId, domain);
       if (!primary) { await escalateManual(orgId, runId, session, "Could not find the submit button — please click it in the live view"); }
-      else await clickAndSettle(page, primary.locator, primary.framePath);
+      else { await hesitate(true); await clickAndSettle(page, primary.locator, primary.framePath); }
       await withOrg(orgId, (tx) => tx.query("UPDATE automation_runs SET submitted_at = now() WHERE id=$1", [runId]));
       await saveCheckpoint(orgId, runId, step + 1, page.url());
 
@@ -228,6 +274,11 @@ export async function executeRun(orgId: string, runId: string): Promise<void> {
       await setStatus(orgId, runId, "failed", { error_code: "skipped", error_message: err.message.slice(0, 500) });
       await emit(orgId, runId, "note", `Skipped: ${err.message}`, undefined, "warn");
       return;  // resolves so the batch can move to the next profile
+    }
+    if (err instanceof BlockedError) {
+      await setStatus(orgId, runId, "failed", { error_code: err.verdict === "rate_limited" ? "rate_limited" : "blocked", error_message: err.message.slice(0, 500) });
+      await emit(orgId, runId, "note", `${err.verdict === "rate_limited" ? "Rate-limited" : "Blocked"} by the site: ${err.message} — proxy quarantined`, undefined, "warn");
+      return;  // resolves so the batch moves on; this profile's proxy is now on cooldown
     }
     logger.error({ err, runId }, "run failed");
     await setStatus(orgId, runId, "failed", { error_code: "run_error", error_message: (err as Error).message.slice(0, 500) });
