@@ -28,7 +28,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
       <Card className="w-full max-w-sm">
         <CardHeader>
           <CardTitle className="text-lg">Create your account</CardTitle>
-          <CardDescription>This is the first time FormAgent has run on this computer. Set up your owner account.</CardDescription>
+          <CardDescription>This is the first time Torv.io has run on this computer. Set up your owner account.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="space-y-3" action={create}>

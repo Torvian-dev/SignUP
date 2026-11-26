@@ -8,7 +8,7 @@
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
-    --primary: 221 83% 53%;
+    --primary: 220 100% 33%;        /* Everton royal blue */
     --primary-foreground: 0 0% 100%;
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
@@ -20,7 +20,7 @@
     --destructive-foreground: 0 0% 100%;
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+    --ring: 220 100% 33%;           /* Everton royal blue */
     --radius: 0.6rem;
 
     /* Data-viz roles (validated reference palette) */
@@ -40,7 +40,7 @@
     --foreground: 210 40% 98%;
     --card: 222 47% 9%;
     --card-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
+    --primary: 218 90% 62%;         /* royal blue, lifted for dark surfaces */
     --primary-foreground: 222 47% 11%;
     --secondary: 217 33% 17%;
     --secondary-foreground: 210 40% 98%;
@@ -52,7 +52,7 @@
     --destructive-foreground: 210 40% 98%;
     --border: 217 33% 20%;
     --input: 217 33% 20%;
-    --ring: 224 76% 48%;
+    --ring: 218 90% 62%;
 
     --viz-surface: #191919;
     --viz-text: #efefef;

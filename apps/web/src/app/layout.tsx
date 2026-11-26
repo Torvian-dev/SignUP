@@ -3,20 +3,20 @@ import "./globals.css";
 import { PwaRegister } from "@/components/PwaRegister";
 
 export const metadata: Metadata = {
-  title: "FormAgent",
-  description: "AI form automation agent — fill and submit web forms from saved profiles.",
-  applicationName: "FormAgent",
+  title: "Torv.io",
+  description: "Automated sign-ups — fill and submit web forms from saved profiles.",
+  applicationName: "Torv.io",
   manifest: "/manifest.webmanifest",
   icons: {
     icon: [{ url: "/icon-192.png", sizes: "192x192", type: "image/png" }, { url: "/icon-512.png", sizes: "512x512", type: "image/png" }],
     apple: [{ url: "/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
   },
-  appleWebApp: { capable: true, title: "FormAgent", statusBarStyle: "black-translucent" },
+  appleWebApp: { capable: true, title: "Torv.io", statusBarStyle: "black-translucent" },
 };
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#2f6df0" },
+    { media: "(prefers-color-scheme: light)", color: "#0033a8" },
     { media: "(prefers-color-scheme: dark)", color: "#0d1016" },
   ],
   width: "device-width",

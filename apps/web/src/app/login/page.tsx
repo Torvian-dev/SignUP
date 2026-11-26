@@ -2,13 +2,17 @@ import { redirect } from "next/navigation";
 import { oauthEnabled, signIn } from "@/auth";
 import { needsSetup } from "@/lib/setup";
 import { Button, Card, CardContent, CardHeader, CardTitle, Input, Label } from "@/components/ui";
+import { LogoMark } from "@/components/Logo";
 
 export default async function LoginPage() {
   if (await needsSetup()) redirect("/setup");
   return (
     <main className="flex min-h-screen items-center justify-center bg-muted/40 p-4">
       <Card className="w-full max-w-sm">
-        <CardHeader><CardTitle className="text-lg">Sign in to FormAgent</CardTitle></CardHeader>
+        <CardHeader className="items-center text-center">
+          <LogoMark className="mb-2 h-10 w-10" />
+          <CardTitle className="text-lg">Sign in to Torv.io</CardTitle>
+        </CardHeader>
         <CardContent className="space-y-4">
           {oauthEnabled.microsoft && (
             <form action={async () => { "use server"; await signIn("microsoft-entra-id", { redirectTo: "/dashboard" }); }}>

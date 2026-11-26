@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Activity, BookMarked, Gauge, KeyRound, Layers, PlayCircle, ScrollText, Settings2, Users } from "lucide-react";
 import { auth, signOut } from "@/auth";
+import { Logo } from "@/components/Logo";
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: Gauge },
@@ -19,7 +20,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   return (
     <div className="flex min-h-screen">
       <aside className="hidden w-60 shrink-0 border-r bg-muted/30 p-4 md:block">
-        <div className="mb-6 px-2 text-lg font-semibold">FormAgent</div>
+        <div className="mb-6 px-2"><Logo /></div>
         <nav className="space-y-1">
           {NAV.map(({ href, label, icon: Icon }) => (
             <Link key={href} href={href} className="flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent">
